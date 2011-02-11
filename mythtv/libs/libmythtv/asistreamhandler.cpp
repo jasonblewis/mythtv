@@ -106,7 +106,7 @@ ASIStreamHandler::ASIStreamHandler(const QString &device) :
     StreamHandler(device), 
     _device_num(-1), _buf_size(-1), _fd(-1),
     _packet_size(TSPacket::kSize), _clock_source(kASIInternalClock),
-    _rx_mode(kASIRXSyncOnActualSize), _drb(NULL), _mpts(NULL)
+    _rx_mode(kASIRXSyncOnActualConvertTo188), _drb(NULL), _mpts(NULL)
 {
 }
 
