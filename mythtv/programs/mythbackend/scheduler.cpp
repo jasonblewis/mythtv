@@ -604,10 +604,9 @@ void Scheduler::UpdateRecStatus(uint cardid, uint chanid,
     }
 }
 
+/// Note schedLock must be held when this is called
 bool Scheduler::ChangeRecordingEnd(RecordingInfo *oldp, RecordingInfo *newp)
 {
-    QMutexLocker lockit(&schedLock);
-
     if (reclist_changed)
         return false;
 
