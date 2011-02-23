@@ -804,12 +804,6 @@ void TVRec::FinishedRecording(RecordingInfo *curRec)
             curRec->GetRecordingStartTime().addSecs(60));
     }
 
-    // Round up recording end time (probably should be done in the UI only)
-    QDateTime recendts = curRec->GetRecordingEndTime();
-    recendts.setTime(QTime(recendts.addSecs(30).time().hour(),
-                           recendts.addSecs(30).time().minute()));
-    curRec->SetRecordingEndTime(recendts);
-
     if (recgrp != "LiveTV")
     {
         MythEvent me(QString("UPDATE_RECORDING_STATUS %1 %2 %3 %4 %5")
