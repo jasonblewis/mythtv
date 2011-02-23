@@ -3850,7 +3850,7 @@ void PlaybackBox::customEvent(QEvent *event)
             if (tokens.size() >= 4)
             {
                 chanid     = tokens[1].toUInt();
-                recstartts = QDateTime::fromString(tokens[2]);
+                recstartts = QDateTime::fromString(tokens[2], Qt::ISODate);
                 filesize   = tokens[3].toLongLong(&ok);
             }
             if (chanid && recstartts.isValid() && ok)
