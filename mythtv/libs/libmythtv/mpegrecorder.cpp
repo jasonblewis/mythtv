@@ -1038,7 +1038,8 @@ void MpegRecorder::StartRecording(void)
 
                 RestartEncoding();
             }
-            else if (_device_read_buffer->IsEOF())
+            else if (_device_read_buffer->IsEOF() &&
+                     IsRecordingRequested())
             {
                 VERBOSE(VB_IMPORTANT, LOC_ERR + "Device EOF detected");
                 _error = true;
