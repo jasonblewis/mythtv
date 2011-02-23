@@ -557,9 +557,6 @@ RecStatusType TVRec::StartRecording(const ProgramInfo *rcinfo)
         did_switch = (NULL != ri);
         if (did_switch)
         {
-            delete curRecording;
-            curRecording = ri;
-
             // Make sure scheduler is allowed to end this recording
             ClearFlags(kFlagCancelNextRecording);
 
