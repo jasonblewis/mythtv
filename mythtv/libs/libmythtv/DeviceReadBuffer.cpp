@@ -426,7 +426,8 @@ bool DeviceReadBuffer::Poll(void) const
         polls[1].revents = 0;
         poll_cnt = (wake_pipe[0] >= 0) ? poll_cnt : 1;
 
-        int timeout = (1 == poll_cnt) ? 10 : -1;
+        int timeout = max((int)max_poll_wait - timer.elapsed(), 10);
+        timeout = (1 == poll_cnt) ? 10 : timeout;
         int ret = poll(polls, poll_cnt, timeout);
 
         if (polls[0].revents & (POLLHUP | POLLNVAL))
@@ -463,7 +464,7 @@ bool DeviceReadBuffer::Poll(void) const
             }
             else //  ret == 0
             {
-                if ((uint)timer.elapsed() > max_poll_wait)
+                if ((uint)timer.elapsed() >= max_poll_wait)
                 {
                     VERBOSE(VB_IMPORTANT, LOC_ERR + "Poll giving up");
                     QMutexLocker locker(&lock);
