@@ -573,7 +573,7 @@ bool DeviceReadBuffer::CheckForErrors(
  */
 uint DeviceReadBuffer::Read(unsigned char *buf, const uint count)
 {
-    uint avail = WaitForUsed(min(count, (uint)min_read));
+    uint avail = WaitForUsed(min(count, (uint)min_read), 500);
     size_t cnt = min(count, avail);
 
     if (!cnt)
@@ -634,22 +634,28 @@ uint DeviceReadBuffer::WaitForUnused(uint needed) const
     return unused;
 }
 
-/** \fn DeviceReadBuffer::WaitForUsed(uint) const
+#include <cassert>
+
+/** \fn DeviceReadBuffer::WaitForUsed(uint,uint) const
  *  \param needed Number of bytes we want to read
+ *  \param max_wait Number of milliseconds to wait for the needed data
  *  \return bytes available for reading
  */
-uint DeviceReadBuffer::WaitForUsed(uint needed) const
+uint DeviceReadBuffer::WaitForUsed(uint needed, uint max_wait) const
 {
-    size_t avail = GetUsed();
-    while ((needed > avail) && running)
+    QWaitCondition dataWait;
+
+    MythTimer timer;
+    timer.start();
+
+    QMutexLocker locker(&lock);
+    size_t avail = used;
+    while ((needed > avail) && running &&
+           !request_pause && !error && !eof &&
+           (timer.elapsed() < (int)max_wait))
     {
-        {
-            QMutexLocker locker(&lock);
-            avail = used;
-            if (request_pause || error || eof)
-                return 0;
-        }
-        usleep(5000);
+        dataWait.wait(locker.mutex(), 10);
+        avail = used;
     }
     return avail;
 }
