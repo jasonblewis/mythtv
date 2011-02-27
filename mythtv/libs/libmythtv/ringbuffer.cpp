@@ -252,6 +252,13 @@ RingBuffer::~RingBuffer(void)
         readAheadBuffer = NULL;
     }
 
+    if (tfw)
+    {
+        tfw->Flush();
+        delete tfw;
+        tfw = NULL;
+    }
+
     rwlock.unlock();
 }
 
