@@ -71,8 +71,6 @@ class MpegRecorder : public V4LRecorder,
     bool StartEncoding(int fd);
     bool StopEncoding(int fd);
 
-    void ResetForNewFile(void);
-
     void SetBitrate(int bitrate, int maxbitrate, const QString & reason);
     void HandleResolutionChanges(void);
 

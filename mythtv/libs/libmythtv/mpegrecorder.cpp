@@ -1199,17 +1199,6 @@ bool MpegRecorder::ProcessTSPacket(const TSPacket &tspacket_real)
     return ret;
 }
 
-void MpegRecorder::ResetForNewFile(void)
-{
-    DTVRecorder::ResetForNewFile();
-
-    if (driver == "hdpvr")
-    {
-        m_h264_parser.Reset();
-        _wait_for_keyframe_option = true;
-    }
-}
-
 void MpegRecorder::Reset(void)
 {
     VERBOSE(VB_RECORD, LOC + "Reset(void)");

@@ -169,8 +169,16 @@ void DTVRecorder::ResetForNewFile(void)
     VERBOSE(VB_RECORD, LOC + "ResetForNewFile(void)");
     QMutexLocker locker(&positionMapLock);
 
+    // _first_keyframe, _seen_psp and m_h264_parser should
+    // not be reset here. This will only be called just as
+    // we're seeing the first packet of a new keyframe for
+    // writing to the new file and anything that makes the
+    // recorder think we're waiting on another keyframe will
+    // send significant amounts of good data to /dev/null.
+    // -- Daniel Kristjansson 2011-02-26
+
     _start_code                 = 0xffffffff;
-    _first_keyframe             =-1;
+    //_first_keyframe
     _has_written_other_keyframe = false;
     _last_keyframe_seen         = 0;
     _last_gop_seen              = 0;
@@ -190,8 +198,7 @@ void DTVRecorder::ResetForNewFile(void)
     _frames_seen_count          = 0;
     _frames_written_count       = 0;
     _pes_synced                 = false;
-    _seen_sps                   = false;
-    m_h264_parser.Reset();
+    //_seen_sps
     positionMap.clear();
     positionMapDelta.clear();
     _payload_buffer.clear();
@@ -1058,7 +1065,7 @@ bool DTVRecorder::ProcessVideoTSPacket(const TSPacket &tspacket)
     if (streamType == StreamID::H264Video)
     {
         _buffer_packets = !FindH264Keyframes(&tspacket);
-        if (!_seen_sps)
+        if (_wait_for_keyframe_option && !_seen_sps)
             return true;
     }
     else
