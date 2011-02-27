@@ -244,6 +244,8 @@ RingBuffer::~RingBuffer(void)
 {
     KillReadAheadThread();
 
+    rwlock.lockForWrite();
+
     if (readAheadBuffer) // this only runs if thread is terminated
     {
         delete [] readAheadBuffer;
