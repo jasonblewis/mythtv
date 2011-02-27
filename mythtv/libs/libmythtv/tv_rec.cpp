@@ -797,6 +797,12 @@ void TVRec::FinishedRecording(RecordingInfo *curRec)
     if (tvchain)
         tvchain->FinishedRecording(curRec);
 
+    // Get the width and set the videoprops
+    uint avg_height = curRec->QueryAverageHeight();
+    curRec->SaveResolutionProperty(
+        (avg_height > 1000) ? VID_1080 :
+        ((avg_height > 700) ? VID_720 : VID_UNKNOWN));
+
     // Make sure really short recordings have positive run time.
     if (curRec->GetRecordingEndTime() <= curRec->GetRecordingStartTime())
     {
@@ -815,7 +821,16 @@ void TVRec::FinishedRecording(RecordingInfo *curRec)
         gCoreContext->dispatch(me);
     }
 
+    // store recording in recorded table
     curRec->FinishedRecording(curRec->GetRecordingStatus() != rsRecorded);
+
+    // send out DONE_RECORDING message
+    int secsSince = curRec->GetRecordingStartTime()
+        .secsTo(QDateTime::currentDateTime());
+    QString message = QString("DONE_RECORDING %1 %2 %3")
+        .arg(cardid).arg(secsSince).arg(GetFramesWritten());
+    MythEvent me(message);
+    gCoreContext->dispatch(me);
 }
 
 #define TRANSITION(ASTATE,BSTATE) \
@@ -940,19 +955,6 @@ void TVRec::TeardownRecorder(bool killFile)
 
     if (recorder && HasFlags(kFlagRecorderRunning))
     {
-        // Get the width and set the videoprops
-        uint avg_height = curRecording->QueryAverageHeight();
-        curRecording->SaveResolutionProperty(
-            (avg_height > 1000) ? VID_1080 :
-            ((avg_height > 700) ? VID_720 : VID_UNKNOWN));
-
-        int secsSince = curRecording->GetRecordingStartTime()
-            .secsTo(QDateTime::currentDateTime());
-        QString message = QString("DONE_RECORDING %1 %2 %3")
-            .arg(cardid).arg(secsSince).arg(GetFramesWritten());
-        MythEvent me(message);
-        gCoreContext->dispatch(me);
-
         recorder->StopRecording();
         pthread_join(recorder_thread, NULL);
     }
