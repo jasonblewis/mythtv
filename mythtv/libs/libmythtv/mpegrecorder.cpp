@@ -1120,8 +1120,8 @@ void MpegRecorder::StartRecording(void)
 
         if (len > 0)
         {
-            len += remainder;
             bytesRead += len;
+            len += remainder;
 
             if (driver == "hdpvr") {
                 remainder = _stream_data->ProcessData(buffer, len);
