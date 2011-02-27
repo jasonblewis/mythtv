@@ -466,7 +466,7 @@ bool DeviceReadBuffer::Poll(void) const
             {
                 if ((uint)timer.elapsed() >= max_poll_wait)
                 {
-                    VERBOSE(VB_IMPORTANT, LOC_ERR + "Poll giving up");
+                    VERBOSE(VB_IMPORTANT, LOC_ERR + "Poll giving up 1");
                     QMutexLocker locker(&lock);
                     error = true;
                     return true;
@@ -480,6 +480,14 @@ bool DeviceReadBuffer::Poll(void) const
             char dummy[128];
             int cnt = (wake_pipe_flags[0] & O_NONBLOCK) ? 128 : 1;
             (void) ::read(wake_pipe[0], dummy, cnt);
+        }
+
+        if ((uint)timer.elapsed() >= max_poll_wait)
+        {
+            VERBOSE(VB_IMPORTANT, LOC_ERR + "Poll giving up 2");
+            QMutexLocker locker(&lock);
+            error = true;
+            return true;
         }
     }
     return retval;
