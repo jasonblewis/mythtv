@@ -5,6 +5,12 @@
 #define LOC QString("OpenGL: ")
 #define LOC_ERR QString("OpenGL Error: ")
 
+#if defined(Q_WS_MAC)
+#include <QX11Info>
+#include <OpenGL/glu.h>
+#endif
+
+
 #if defined(Q_WS_X11)
 #include <QX11Info>
 #include <GL/glx.h>
