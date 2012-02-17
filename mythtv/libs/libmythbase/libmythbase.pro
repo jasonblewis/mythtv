@@ -23,7 +23,7 @@ HEADERS += unzip.h unzip_p.h zipentry_p.h iso639.h iso3166.h mythmedia.h
 HEADERS += util.h mythhdd.h mythcdrom.h autodeletedeque.h dbutil.h
 HEADERS += mythhttppool.h mythhttphandler.h mythdeque.h mythlogging.h
 HEADERS += mythbaseutil.h referencecounter.h version.h mythcommandlineparser.h
-HEADERS += mythscheduler.h filesysteminfo.h hardwareprofile.h
+HEADERS += mythscheduler.h filesysteminfo.h hardwareprofile.h serverpool.h
 
 SOURCES += mthread.cpp mthreadpool.cpp
 SOURCES += mythsocket.cpp mythsocketthread.cpp msocketdevice.cpp
@@ -37,7 +37,7 @@ SOURCES += unzip.cpp iso639.cpp iso3166.cpp mythmedia.cpp util.cpp
 SOURCES += mythhdd.cpp mythcdrom.cpp dbutil.cpp
 SOURCES += mythhttppool.cpp mythhttphandler.cpp logging.cpp
 SOURCES += referencecounter.cpp mythcommandlineparser.cpp
-SOURCES += filesysteminfo.cpp hardwareprofile.cpp
+SOURCES += filesysteminfo.cpp hardwareprofile.cpp serverpool.cpp
 
 win32:SOURCES += msocketdevice_win.cpp
 unix {
@@ -63,7 +63,7 @@ inc.files += mythcoreutil.h mythlocale.h mythdownloadmanager.h
 inc.files += mythtranslation.h iso639.h iso3166.h mythmedia.h util.h
 inc.files += mythcdrom.h autodeletedeque.h dbutil.h mythhttppool.h mythdeque.h
 inc.files += referencecounter.h mythcommandlineparser.h mthread.h mthreadpool.h
-inc.files += filesysteminfo.h hardwareprofile.h
+inc.files += filesysteminfo.h hardwareprofile.h bonjourregister.h serverpool.h
 
 # Allow both #include <blah.h> and #include <libmythbase/blah.h>
 inc2.path  = $${PREFIX}/include/mythtv/libmythbase
@@ -81,15 +81,8 @@ macx {
     HEADERS += mythcdrom-darwin.h
     SOURCES += mythcdrom-darwin.cpp
 
-    # Mac OS X Frameworks
-    FWKS = IOKit
-
-    # The following trick is tidier, and shortens the command line, but it
-    # depends on the shell expanding Csh-style braces. Luckily, Bash & Zsh do.
-    FC = $$join(FWKS,",","{","}")
-
-    QMAKE_CXXFLAGS += -F/System/Library/Frameworks/$${FC}.framework/Frameworks
-    LIBS           += -framework $$join(FWKS," -framework ")
+    QMAKE_CXXFLAGS += -F/System/Library/Frameworks/IOKit.framework/Frameworks
+    LIBS           += -framework IOKit
 }
 
 linux {
@@ -107,10 +100,19 @@ use_hidesyms {
     QMAKE_CXXFLAGS += -fvisibility=hidden
 }
 
+using_libdns_sd {
+    DEFINES += USING_LIBDNS_SD
+    HEADERS += bonjourregister.h
+    SOURCES += bonjourregister.cpp
+    !macx: LIBS += -ldns_sd
+}
+
 using_libudf {
     DEFINES += USING_LIBUDF
     LIBS += -ludf
 }
+
+using_x11:DEFINES += USING_X11
 
 mingw:LIBS += -lws2_32
 

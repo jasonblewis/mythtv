@@ -17,15 +17,15 @@ using namespace std;
 #include "util.h"
 #include "streamlisteners.h"
 #include "eitscanner.h"
+#include "mythtvexp.h"
 
 class EITHelper;
 class PSIPTable;
 class RingBuffer;
-class PESPacket;
 
 typedef vector<uint>                    uint_vec_t;
 
-typedef QMap<unsigned int, PESPacket*>  pid_pes_map_t;
+typedef QMap<unsigned int, PSIPTable*>  pid_psip_map_t;
 typedef QMap<const PSIPTable*, int>     psip_refcnt_map_t;
 
 typedef ProgramAssociationTable*               pat_ptr_t;
@@ -54,7 +54,7 @@ typedef enum
     kEncEncrypted = 2,
 } CryptStatus;
 
-class CryptInfo
+class MTV_PUBLIC CryptInfo
 {
   public:
     CryptInfo() :
@@ -83,7 +83,7 @@ typedef enum
 } PIDPriority;
 typedef QMap<uint, PIDPriority> pid_map_t;
 
-class MPEGStreamData : public EITSource
+class MTV_PUBLIC MPEGStreamData : public EITSource
 {
   public:
     MPEGStreamData(int desiredProgram, bool cacheTables);
@@ -292,12 +292,12 @@ class MPEGStreamData : public EITSource
     // Table processing -- for internal use
     PSIPTable* AssemblePSIP(const TSPacket* tspacket, bool& moreTablePackets);
     bool AssemblePSIP(PSIPTable& psip, TSPacket* tspacket);
-    void SavePartialPES(uint pid, PESPacket* packet);
-    PESPacket* GetPartialPES(uint pid)
-        { return _partial_pes_packet_cache[pid]; }
-    void ClearPartialPES(uint pid)
-        { _partial_pes_packet_cache.remove(pid); }
-    void DeletePartialPES(uint pid);
+    void SavePartialPSIP(uint pid, PSIPTable* packet);
+    PSIPTable* GetPartialPSIP(uint pid)
+        { return _partial_psip_packet_cache[pid]; }
+    void ClearPartialPSIP(uint pid)
+        { _partial_psip_packet_cache.remove(pid); }
+    void DeletePartialPSIP(uint pid);
     void ProcessPAT(const ProgramAssociationTable *pat);
     void ProcessPMT(const ProgramMapTable *pmt);
     void ProcessEncryptedPacket(const TSPacket&);
@@ -357,7 +357,7 @@ class MPEGStreamData : public EITSource
     sections_map_t            _pmt_section_seen;
 
     // PSIP construction
-    pid_pes_map_t             _partial_pes_packet_cache;
+    pid_psip_map_t            _partial_psip_packet_cache;
 
     // Caching
     bool                             _cache_tables;

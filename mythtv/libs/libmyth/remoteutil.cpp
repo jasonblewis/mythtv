@@ -224,35 +224,6 @@ vector<uint> RemoteRequestFreeRecorderList(void)
     return list;
 }
 
-void RemoteSendMessage(const QString &message)
-{
-    if (gCoreContext->IsBackend())
-    {
-        gCoreContext->dispatch(MythEvent(message));
-        return;
-    }
-
-    QStringList strlist( "MESSAGE" );
-    strlist << message;
-
-    gCoreContext->SendReceiveStringList(strlist);
-}
-
-void RemoteSendEvent(const MythEvent &event)
-{
-    if (gCoreContext->IsBackend())
-    {
-        gCoreContext->dispatch(event);
-        return;
-    }
-
-    QStringList strlist( "MESSAGE" );
-    strlist << event.Message();
-    strlist << event.ExtraDataList();
-
-    gCoreContext->SendReceiveStringList(strlist);
-}
-
 QDateTime RemoteGetPreviewLastModified(const ProgramInfo *pginfo)
 {
     QDateTime retdatetime;
@@ -598,6 +569,21 @@ vector<ProgramInfo *> *RemoteGetCurrentlyRecordingList(void)
         delete info;
 
     return reclist; 
+}
+
+/**
+ * \brief return list of backends currently connected to the master
+ */
+bool RemoteGetActiveBackends(QStringList *list)
+{
+    list->clear();
+    *list << "QUERY_ACTIVE_BACKENDS";
+
+    if (!gCoreContext->SendReceiveStringList(*list))
+        return false;
+
+    list->removeFirst();
+    return true;
 }
 
 /* vim: set expandtab tabstop=4 shiftwidth=4: */

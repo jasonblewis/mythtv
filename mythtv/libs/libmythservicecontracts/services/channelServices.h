@@ -6,18 +6,7 @@
 //
 // Copyright (c) 2010 Robert McNamara <rmcnamara@mythtv.org>
 //
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or at your option any later version of the LGPL.
-//
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library.  If not, see <http://www.gnu.org/licenses/>.
+// Licensed under the GPL v2 or later, see COPYING for details
 //
 //////////////////////////////////////////////////////////////////////////////
 
@@ -52,13 +41,13 @@
 class SERVICE_PUBLIC ChannelServices : public Service
 {
     Q_OBJECT
-    Q_CLASSINFO( "version"    , "1.05" );
-    Q_CLASSINFO( "CreateDBChannel_Method",           "POST" )
+    Q_CLASSINFO( "version"    , "1.2" );
+    Q_CLASSINFO( "AddDBChannel_Method",              "POST" )
     Q_CLASSINFO( "UpdateDBChannel_Method",           "POST" )
-    Q_CLASSINFO( "DeleteDBChannel_Method",           "POST" )
-    Q_CLASSINFO( "CreateVideoSource_Method",         "POST" )
+    Q_CLASSINFO( "RemoveDBChannel_Method",           "POST" )
+    Q_CLASSINFO( "AddVideoSource_Method",            "POST" )
     Q_CLASSINFO( "UpdateVideoSource_Method",         "POST" )
-    Q_CLASSINFO( "DeleteVideoSource_Method",         "POST" )
+    Q_CLASSINFO( "RemoveVideoSource_Method",         "POST" )
 
     public:
 
@@ -103,7 +92,7 @@ class SERVICE_PUBLIC ChannelServices : public Service
                                                              const QString &XMLTVID,
                                                              const QString &DefaultAuthority ) = 0;
 
-        virtual bool                   CreateDBChannel     ( uint          MplexID,
+        virtual bool                   AddDBChannel        ( uint          MplexID,
                                                              uint          SourceID,
                                                              uint          ChannelID,
                                                              const QString &CallSign,
@@ -120,7 +109,7 @@ class SERVICE_PUBLIC ChannelServices : public Service
                                                              const QString &XMLTVID,
                                                              const QString &DefaultAuthority ) = 0;
 
-        virtual bool                   DeleteDBChannel     ( uint          ChannelID ) = 0;
+        virtual bool                   RemoveDBChannel     ( uint          ChannelID ) = 0;
 
         /* Video Source Methods */
 
@@ -139,7 +128,7 @@ class SERVICE_PUBLIC ChannelServices : public Service
                                                                    const QString &ConfigPath,
                                                                    int           NITId ) = 0;
 
-        virtual bool                      CreateVideoSource      ( const QString &SourceName,
+        virtual int                       AddVideoSource         ( const QString &SourceName,
                                                                    const QString &Grabber,
                                                                    const QString &UserId,
                                                                    const QString &FreqTable,
@@ -149,11 +138,15 @@ class SERVICE_PUBLIC ChannelServices : public Service
                                                                    const QString &ConfigPath,
                                                                    int           NITId ) = 0;
 
-        virtual bool                      DeleteVideoSource      ( uint          SourceID ) = 0;
+        virtual bool                      RemoveVideoSource      ( uint          SourceID ) = 0;
 
-        virtual DTC::LineupList*          GetDDLineups           ( const QString &Source,
+        virtual DTC::LineupList*          GetDDLineupList        ( const QString &Source,
                                                                    const QString &UserId,
                                                                    const QString &Password ) = 0;
+
+        virtual int                       FetchChannelsFromSource( const uint SourceId,
+                                                                   const uint CardId,
+                                                                   bool       WaitForFinish ) = 0;
 
         /* Multiplex Methods */
 
@@ -163,7 +156,7 @@ class SERVICE_PUBLIC ChannelServices : public Service
 
         virtual DTC::VideoMultiplex*      GetVideoMultiplex      ( int MplexID    ) = 0;
 
-        virtual QStringList               GetXMLTVIds            ( int SourceID ) = 0;
+        virtual QStringList               GetXMLTVIdList         ( int SourceID ) = 0;
 };
 
 #endif

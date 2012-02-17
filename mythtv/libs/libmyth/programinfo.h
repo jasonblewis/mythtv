@@ -194,6 +194,10 @@ class MPUBLIC ProgramInfo
                 bool commfree,
                 bool repeat,
 
+                uint videoprops,
+                uint audioprops,
+                uint subtitletype,
+
                 const ProgramList &schedList,
                 bool               oneChanid);
     /// Constructs a basic ProgramInfo (used by RecordingInfo)
@@ -232,7 +236,8 @@ class MPUBLIC ProgramInfo
                 int season, int episode,
                 const QString &inetref,
                 uint length_in_minutes,
-                uint year);
+                uint year,
+                const QString &programid);
     /// Constructs a manual record ProgramInfo.
     ProgramInfo(const QString &_title, uint _chanid,
                 const QDateTime &_startts, const QDateTime &_endts);
@@ -277,6 +282,11 @@ class MPUBLIC ProgramInfo
     bool IsSameTimeslot(const ProgramInfo &other) const;
     bool IsSameProgramTimeslot(const ProgramInfo &other) const;//sched only
     static int GetRecordingTypeRecPriority(RecordingType type);//sched only
+    static bool UsingProgramIDAuthority(void)
+    {
+        return usingProgIDAuth;
+    };
+    static void CheckProgramIDAuthorities(void);//sched only
 
     // Used for extending scheduled recordings
     bool IsSameProgramWeakCheck(const ProgramInfo &other) const;
@@ -298,7 +308,11 @@ class MPUBLIC ProgramInfo
         { return GetProgramInfoType() == kProgramInfoTypeVideoDVD; }
     bool IsVideoBD(void) const
         { return GetProgramInfoType() == kProgramInfoTypeVideoBD; }
-    bool IsLocal(void) const { return pathname.left(1) == "/"; }
+    bool IsLocal(void) const { return pathname.left(1) == "/"
+#ifdef _WIN32
+        || pathname.at(1) == ':'
+#endif
+            ; }
     bool IsMythStream(void) const { return pathname.left(7) == "myth://"; }
     bool IsPathSet(void) const { return GetBasename() != pathname; }
     bool HasPathname(void) const { return !GetPathname().isEmpty(); }
@@ -432,9 +446,12 @@ class MPUBLIC ProgramInfo
     bool IsDeletePending(void)  const
         { return programflags & FL_DELETEPENDING; }
 
-    uint GetSubtitleType(void)    const { return (properties >> 11) & 0x0F; }
-    uint GetVideoProperties(void) const { return (properties >> 6)  & 0x1F; }
-    uint GetAudioProperties(void) const { return (properties >> 0)  & 0x3F; }
+    uint GetSubtitleType(void)    const
+        { return (properties&kSubtitlePropertyMask)>>kSubtitlePropertyOffset; }
+    uint GetVideoProperties(void) const
+        { return (properties & kVideoPropertyMask) >> kVideoPropertyOffset; }
+    uint GetAudioProperties(void) const
+        { return (properties & kAudioPropertyMask) >> kAudioPropertyOffset; }
 
     typedef enum
     {
@@ -512,6 +529,7 @@ class MPUBLIC ProgramInfo
     AutoExpireType QueryAutoExpire(void) const;
     TranscodingStatus QueryTranscodeStatus(void) const;
     bool        QueryTuningInfo(QString &channum, QString &input) const;
+    QString     QueryInputDisplayName(void) const;
     uint        QueryAverageWidth(void) const;
     uint        QueryAverageHeight(void) const;
     uint        QueryAverageFrameRate(void) const;
@@ -540,7 +558,7 @@ class MPUBLIC ProgramInfo
     void SaveFrameRate(uint64_t frame, uint framerate);
     void SaveTotalDuration(int64_t duration);
     void SaveTotalFrames(int64_t frames);
-    void SaveResolutionProperty(VideoProperty vid_flags);
+    void SaveVideoProperties(uint mask, uint video_property_flags);
     void SaveMarkupFlag(MarkTypes type) const;
     void ClearMarkupFlag(MarkTypes type) const { ClearMarkupMap(type); }
     void UpdateLastDelete(bool setTime) const;
@@ -701,9 +719,9 @@ class MPUBLIC ProgramInfo
 
     static QMutex staticDataLock;
     static ProgramInfoUpdater *updater;
+    static bool usingProgIDAuth;
 };
 
-Q_DECLARE_METATYPE(ProgramInfo*)
 
 MPUBLIC bool LoadFromProgram(
     ProgramList        &destination,
@@ -784,6 +802,8 @@ class MPUBLIC PMapDBReplacement
     QMutex *lock;
     QMap<MarkTypes,frm_pos_map_t> map;
 };
+
+Q_DECLARE_METATYPE(ProgramInfo*)
 
 #endif // MYTHPROGRAM_H_
 

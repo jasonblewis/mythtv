@@ -12,6 +12,7 @@ using namespace std;
 #include <QFileInfo>
 #include <QRegExp>
 #include <QEvent>
+#include <QCoreApplication>
 
 #include "mythconfig.h"
 
@@ -204,12 +205,12 @@ void JobQueue::ProcessQueue(void)
         }
         runningJobsLock->unlock();
 
+        jobsRunning = 0;
         GetJobsInQueue(jobs);
 
         if (jobs.size())
         {
             inTimeWindow = InJobRunWindow();
-            jobsRunning = 0;
             for (int x = 0; x < jobs.size(); x++)
             {
                 status = jobs[x].status;
@@ -463,6 +464,29 @@ void JobQueue::ProcessQueue(void)
                 startedJobAlready = true;
             }
         }
+
+        if (QCoreApplication::applicationName() == MYTH_APPNAME_MYTHJOBQUEUE)
+        {
+            if (jobsRunning > 0)
+            {
+                if (!(gCoreContext->IsBlockingClient()))
+                {
+                    gCoreContext->BlockShutdown();
+                    LOG(VB_JOBQUEUE, LOG_INFO, QString("%1 jobs running. "
+                        "Blocking shutdown.").arg(jobsRunning));
+                }
+            }
+            else
+            {
+                if (gCoreContext->IsBlockingClient())
+                {
+                    gCoreContext->AllowShutdown();
+                    LOG(VB_JOBQUEUE, LOG_INFO, "No jobs running. "
+                                               "Allowing shutdown.");
+                }
+            }
+        }
+
 
         locker.relock();
         if (processQueue)
@@ -1775,6 +1799,7 @@ QString JobQueue::GetJobCommand(int id, int jobType, ProgramInfo *tmpInfo)
         tmpInfo->SubstituteMatches(command);
 
         command.replace("%VERBOSELEVEL%", QString("%1").arg(verboseMask));
+        command.replace("%VERBOSEMODE%", QString("%1").arg(logPropagateArgs));
 
         uint transcoder = tmpInfo->QueryTranscoderID();
         command.replace("%TRANSPROFILE%",

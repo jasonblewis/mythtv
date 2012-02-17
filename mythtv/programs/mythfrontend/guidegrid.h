@@ -16,6 +16,7 @@ using namespace std;
 #include "programinfo.h"
 #include "channelgroup.h"
 #include "channelutil.h"
+#include "mythuiguidegrid.h"
 
 // mythfrontend
 #include "schedulecommon.h"
@@ -28,7 +29,6 @@ class QTimer;
 class MythUIButtonList;
 class MythUIGuideGrid;
 
-#define MAX_DISPLAY_CHANS 12
 #define MAX_DISPLAY_TIMES 36
 
 typedef vector<PixmapChannel>   pix_chan_list_t;
@@ -163,8 +163,11 @@ class GuideGrid : public ScheduleCommon, public JumpToChannelListener
 
     void moveLeftRight(MoveVector movement);
     void moveUpDown(MoveVector movement);
+    void moveToTime(QDateTime datetime);
 
-    void showMenu(void);
+    void ShowMenu(void);
+    void ShowRecordingMenu(void);
+    void ShowJumpToTime(void);
 
     int  FindChannel(uint chanid, const QString &channum,
                      bool exact = true) const;

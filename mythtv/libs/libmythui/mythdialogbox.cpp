@@ -6,8 +6,12 @@
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QDateTime>
+#include <QDate>
+#include <QTime>
 
 #include "mythlogging.h"
+#include "util.h"
 
 #include "mythmainwindow.h"
 #include "mythfontproperties.h"
@@ -21,11 +25,65 @@
 QEvent::Type DialogCompletionEvent::kEventType =
     (QEvent::Type) QEvent::registerEventType();
 
+
+MythMenu::MythMenu(const QString &text, QObject *retobject, const QString &resultid) :
+    m_parentMenu(NULL),  m_title(""), m_text(text), m_resultid(resultid), m_retObject(retobject)
+{
+}
+
+MythMenu::MythMenu(const QString &title, const QString &text, QObject *retobject, const QString &resultid) :
+    m_parentMenu(NULL),  m_title(title), m_text(text), m_resultid(resultid), m_retObject(retobject)
+{
+}
+
+MythMenu::~MythMenu(void)
+{
+    while (!m_menuItems.isEmpty())
+    {
+        MythMenuItem *item = m_menuItems.takeFirst();
+
+        if (item->SubMenu)
+            delete item->SubMenu;
+
+        delete item;
+    }
+}
+
+void MythMenu::AddItem(const QString& title, const char* slot, MythMenu *subMenu, bool selected, bool checked)
+{
+    MythMenuItem *item = new MythMenuItem(title, slot, checked, subMenu);
+
+    m_menuItems.append(item);
+
+    if (selected)
+        m_selectedItem = m_menuItems.indexOf(item);
+
+    if (subMenu)
+        subMenu->SetParent(this);
+}
+
+void MythMenu::AddItem(const QString &title, QVariant data, MythMenu *subMenu, bool selected, bool checked)
+{
+    MythMenuItem *item = new MythMenuItem(title, data, checked, subMenu);
+
+    m_menuItems.append(item);
+
+    if (selected)
+        m_selectedItem = m_menuItems.indexOf(item);
+
+    if (subMenu)
+        subMenu->SetParent(this);
+}
+
+/////////////////////////////////////////////////////////////////
+
 MythDialogBox::MythDialogBox(const QString &text,
                              MythScreenStack *parent, const char *name,
                              bool fullscreen, bool osd)
          : MythScreenType(parent, name, false)
 {
+    m_menu = NULL;
+    m_currentMenu = NULL;
     m_retObject = NULL;
     m_titlearea = NULL;
     m_text = text;
@@ -47,6 +105,8 @@ MythDialogBox::MythDialogBox(const QString &title, const QString &text,
                              bool fullscreen, bool osd)
          : MythScreenType(parent, name, false)
 {
+    m_menu = NULL;
+    m_currentMenu = NULL;
     m_id = "";
     m_retObject = NULL;
     m_title = title;
@@ -63,6 +123,38 @@ MythDialogBox::MythDialogBox(const QString &title, const QString &text,
     m_backdata = 0;
     m_exittext = "";
     m_exitdata = 0;
+}
+
+MythDialogBox::MythDialogBox(MythMenu *menu, MythScreenStack *parent, const char *name,
+                               bool fullscreen, bool osd)
+         : MythScreenType(parent, name, false)
+{
+    m_menu = menu;
+    m_currentMenu = m_menu;
+    m_id = "";
+    m_retObject = NULL;
+    m_title = "";
+    m_titlearea = NULL;
+    m_textarea = NULL;
+    m_buttonList = NULL;
+
+    m_fullscreen = fullscreen;
+    m_osdDialog  = osd;
+    m_useSlots = false;
+
+    m_backtext = "";
+    m_backdata = 0;
+    m_exittext = "";
+    m_exitdata = 0;
+}
+
+MythDialogBox::~MythDialogBox(void)
+{
+    if (m_menu)
+    {
+        delete m_menu;
+        m_menu = NULL;
+    }
 }
 
 bool MythDialogBox::Create(void)
@@ -92,7 +184,11 @@ bool MythDialogBox::Create(void)
     if (m_titlearea)
         m_titlearea->SetText(m_title);
     m_textarea->SetText(m_text);
+
     BuildFocusList();
+
+    if (m_menu)
+        updateMenu();
 
     connect(m_buttonList, SIGNAL(itemClicked(MythUIButtonListItem*)),
             SLOT(Select(MythUIButtonListItem*)));
@@ -100,20 +196,83 @@ bool MythDialogBox::Create(void)
     return true;
 }
 
+void MythDialogBox::SetMenuItems(MythMenu* menu)
+{
+    m_menu = menu;
+    m_currentMenu = m_menu;
+    updateMenu();
+}
+
+void MythDialogBox::updateMenu(void)
+{
+    if (!m_buttonList)
+    {
+         LOG(VB_GENERAL, LOG_ERR, "UpdateMenu() called before we have a button list to update!");
+         return;
+    }
+
+    if (!m_currentMenu)
+        return;
+
+    if (m_titlearea)
+        m_titlearea->SetText(m_currentMenu->m_title);
+
+    m_textarea->SetText(m_currentMenu->m_text);
+
+    m_buttonList->Reset();
+
+    for (int x = 0; x < m_currentMenu->m_menuItems.count(); x++)
+    {
+        MythMenuItem *menuItem = m_currentMenu->m_menuItems.at(x);
+        MythUIButtonListItem *button = new MythUIButtonListItem(m_buttonList, menuItem->Text);
+        button->SetData(qVariantFromValue(menuItem));
+        button->setDrawArrow((menuItem->SubMenu != NULL));
+
+        if (m_currentMenu->m_selectedItem == x)
+            m_buttonList->SetItemCurrent(button);
+    }
+}
+
 void MythDialogBox::Select(MythUIButtonListItem* item)
 {
     if (!item)
         return;
 
-    const char *slot = qVariantValue<const char *>(item->GetData());
-    if (m_useSlots && slot)
+    if (m_currentMenu)
     {
-        connect(this, SIGNAL(Selected()), m_retObject, slot,
-                Qt::QueuedConnection);
-        emit Selected();
+        MythMenuItem *menuItem = qVariantValue<MythMenuItem *>(item->GetData());
+
+        if (menuItem->SubMenu)
+        {
+            m_currentMenu->m_selectedItem = m_buttonList->GetCurrentPos();
+            m_currentMenu = menuItem->SubMenu;
+            updateMenu();
+            return;
+        }
+
+        const char *slot = qVariantValue<const char *>(menuItem->Data);
+        if (menuItem->UseSlot && slot)
+        {
+            connect(this, SIGNAL(Selected()), m_currentMenu->m_retObject, slot,
+                    Qt::QueuedConnection);
+            emit Selected();
+        }
+
+        SendEvent(m_buttonList->GetItemPos(item), item->GetText(), menuItem->Data);
+    }
+    else
+    {
+        const char *slot = qVariantValue<const char *>(item->GetData());
+        if (m_useSlots && slot)
+        {
+            connect(this, SIGNAL(Selected()), m_retObject, slot,
+                    Qt::QueuedConnection);
+            emit Selected();
+        }
+
+        SendEvent(m_buttonList->GetItemPos(item), item->GetText(), item->GetData());
     }
 
-    SendEvent(m_buttonList->GetItemPos(item), item->GetText(), item->GetData());
     if (m_ScreenStack)
         m_ScreenStack->PopScreen(false);
 }
@@ -194,7 +353,15 @@ bool MythDialogBox::keyPressEvent(QKeyEvent *event)
             (action == "UP" &&
              m_buttonList->GetLayout() == MythUIButtonList::LayoutHorizontal))
         {
+            if (m_currentMenu && m_currentMenu->m_parentMenu)
+            {
+                m_currentMenu = m_currentMenu->m_parentMenu;
+                updateMenu();
+                return true;
+            }
+
             SendEvent(-1, m_backtext, m_backdata);
+            Close();
         }
         else if (action == "MENU")
         {
@@ -243,13 +410,26 @@ bool MythDialogBox::gestureEvent(MythGestureEvent *event)
 
 void MythDialogBox::SendEvent(int res, QString text, QVariant data)
 {
-    emit Closed(m_id, res);
+    if (m_currentMenu)
+    {
+        emit Closed(m_currentMenu->m_resultid, res);
 
-    if (!m_retObject)
-        return;
+        if (!m_currentMenu->m_retObject)
+            return;
 
-    DialogCompletionEvent *dce = new DialogCompletionEvent(m_id, res, text, data);
-    QCoreApplication::postEvent(m_retObject, dce);
+        DialogCompletionEvent *dce = new DialogCompletionEvent(m_currentMenu->m_resultid, res, text, data);
+        QCoreApplication::postEvent(m_currentMenu->m_retObject, dce);
+    }
+    else
+    {
+        emit Closed(m_id, res);
+
+        if (!m_retObject)
+            return;
+
+        DialogCompletionEvent *dce = new DialogCompletionEvent(m_id, res, text, data);
+        QCoreApplication::postEvent(m_retObject, dce);
+    }
 }
 
 /////////////////////////////////////////////////////////////////
@@ -259,6 +439,7 @@ MythConfirmationDialog::MythConfirmationDialog(MythScreenStack *parent,
                                                bool showCancel)
                        : MythScreenType(parent, "mythconfirmpopup")
 {
+    m_messageText = NULL;
     m_message = message;
     m_showCancel = showCancel;
 
@@ -271,12 +452,11 @@ bool MythConfirmationDialog::Create(void)
     if (!CopyWindowFromBase("MythConfirmationDialog", this))
         return false;
 
-    MythUIText *messageText = NULL;
     MythUIButton *okButton = NULL;
     MythUIButton *cancelButton = NULL;
 
     bool err = false;
-    UIUtilE::Assign(this, messageText, "message", &err);
+    UIUtilE::Assign(this, m_messageText, "message", &err);
     UIUtilE::Assign(this, okButton, "ok", &err);
     UIUtilE::Assign(this, cancelButton, "cancel", &err);
 
@@ -295,7 +475,7 @@ bool MythConfirmationDialog::Create(void)
 
     connect(okButton, SIGNAL(Clicked()), SLOT(Confirm()));
 
-    messageText->SetText(m_message);
+    m_messageText->SetText(m_message);
 
     BuildFocusList();
 
@@ -328,6 +508,13 @@ bool MythConfirmationDialog::keyPressEvent(QKeyEvent *event)
         handled = true;
 
     return handled;
+}
+
+void MythConfirmationDialog::SetMessage(const QString &message)
+{
+    m_message = message;
+    if (m_messageText)
+        m_messageText->SetText(m_message);
 }
 
 void MythConfirmationDialog::SetReturnEvent(QObject *retobject,
@@ -373,7 +560,7 @@ MythConfirmationDialog  *ShowOkPopup(const QString &message, QObject *parent,
 {
     QString                  LOC = "ShowOkPopup('" + message + "') - ";
     MythConfirmationDialog  *pop;
-    static MythScreenStack  *stk = NULL;
+    MythScreenStack         *stk = NULL;
 
 
     if (!stk)
@@ -628,3 +815,176 @@ void MythUISearchDialog::slotUpdateList(void)
         m_matchesText->SetText(tr("%n match(es)", "", 0));
 }
 
+////////////////////////////////////////////////////////////////////////
+
+MythTimeInputDialog::MythTimeInputDialog(MythScreenStack *parent,
+                                         const QString &message,
+                                         int resolutionFlags,
+                                         QDateTime startTime,
+                                         int rangeLimit)
+    : MythScreenType(parent, "timepopup"),
+        m_message(message), m_startTime(startTime),
+        m_resolution(resolutionFlags), m_rangeLimit(rangeLimit),
+        m_dateList(NULL), m_timeList(NULL), m_retObject(NULL)
+{
+}
+
+bool MythTimeInputDialog::Create()
+{
+    if (!CopyWindowFromBase("MythTimeInputDialog", this))
+        return false;
+
+    MythUIText *messageText = NULL;
+    MythUIButton *okButton = NULL;
+
+    bool err = false;
+    UIUtilE::Assign(this, messageText, "message", &err);
+    UIUtilE::Assign(this, m_dateList, "dates", &err);
+    UIUtilE::Assign(this, m_timeList, "times", &err);
+    UIUtilE::Assign(this, okButton, "ok", &err);
+
+    if (err)
+    {
+        LOG(VB_GENERAL, LOG_ERR, "Cannot load screen 'MythTimeInputDialog'");
+        return false;
+    }
+
+    m_dateList->SetVisible(false);
+    m_timeList->SetVisible(false);
+
+    MythUIButtonListItem *item;
+    // Date
+    if (kNoDate != (m_resolution & 0xF))
+    {
+        QDate date(m_startTime.date());
+
+        int limit = 0;
+        if (m_resolution & kFutureDates)
+        {
+            limit += m_rangeLimit;
+        }
+        if (m_resolution & kPastDates)
+        {
+            limit += m_rangeLimit;
+            date = date.addDays(0-m_rangeLimit);
+        }
+
+        QString text;
+        int flags;
+        bool selected = false;
+        for (int x = 0; x <= limit; x++)
+        {
+            selected = false;
+            if (m_resolution & kDay)
+            {
+                date = date.addDays(1);
+                flags = kDateFull | kSimplify;
+                if (m_rangeLimit >= 356)
+                    flags |= kAddYear;
+                text = MythDateToString(date, flags);
+
+                if (date == m_startTime.date())
+                    selected = true;
+            }
+            else if (m_resolution & kMonth)
+            {
+                date = date.addMonths(1);
+                text = date.toString("MMM yyyy");
+
+                if ((date.month() == m_startTime.date().month()) &&
+                    (date.year() == m_startTime.date().year()))
+                    selected = true;
+            }
+            else if (m_resolution & kYear)
+            {
+                date = date.addYears(1);
+                text = date.toString("yyyy");
+                if (date.year() == m_startTime.date().year())
+                    selected = true;
+            }
+
+            item = new MythUIButtonListItem(m_dateList, text, NULL, false);
+            item->SetData(QVariant(date));
+
+            if (m_startTime.date() == date)
+                m_dateList->SetItemCurrent(item);
+        }
+        m_dateList->SetVisible(true);
+    }
+
+    // Time
+    if (kNoTime != (m_resolution & 0xF0))
+    {
+        QTime time(0,0,0);
+        QString text;
+        bool selected = false;
+
+        int limit = (m_resolution & kMinutes) ? (60 * 24) : 24;
+
+        for (int x = 0; x < limit; x++)
+        {
+            selected = false;
+            if (m_resolution & kMinutes)
+            {
+                time = time.addSecs(60);
+                text = MythTimeToString(time, kTime);
+
+                if (time == m_startTime.time())
+                    selected = true;
+            }
+            else if (m_resolution & kHours)
+            {
+                time = time.addSecs(60*60);
+                text = time.toString("hh:00");
+
+                if (time.hour() == m_startTime.time().hour())
+                    selected = true;
+            }
+
+            item = new MythUIButtonListItem(m_timeList, text, NULL, false);
+            item->SetData(QVariant(time));
+
+            if (selected)
+                m_timeList->SetItemCurrent(item);
+        }
+        m_timeList->SetVisible(true);
+    }
+
+    if (messageText && !m_message.isEmpty())
+        messageText->SetText(m_message);
+
+    connect(okButton, SIGNAL(Clicked()), SLOT(okClicked()));
+
+    BuildFocusList();
+
+    return true;
+}
+
+void MythTimeInputDialog::SetReturnEvent(QObject* retobject,
+                                         const QString& resultid)
+{
+    m_retObject = retobject;
+    m_id = resultid;
+}
+
+void MythTimeInputDialog::okClicked(void)
+{
+    QDateTime dateTime;
+    QDate date = m_dateList->GetDataValue().toDate();
+    QTime time = m_timeList->GetDataValue().toTime();
+
+    dateTime.setDate(date);
+    dateTime.setTime(time);
+
+    emit haveResult(dateTime);
+
+    if (m_retObject)
+    {
+        QVariant data(dateTime);
+        DialogCompletionEvent *dce = new DialogCompletionEvent(m_id, 0, "",
+                                                               data);
+        QCoreApplication::postEvent(m_retObject, dce);
+    }
+
+    Close();
+}

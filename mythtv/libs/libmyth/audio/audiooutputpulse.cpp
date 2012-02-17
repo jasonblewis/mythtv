@@ -240,8 +240,6 @@ void AudioOutputPulseAudio::WriteAudio(uchar *aubuf, int size)
     if (sstate == PA_STREAM_CREATING || sstate == PA_STREAM_READY)
     {
         int write_status = PA_ERR_INVALID;
-        size_t write;
-        size_t writable;
         size_t to_write = size;
         unsigned char *buf_ptr = aubuf;
         pa_context_state_t cstate;
@@ -250,39 +248,28 @@ void AudioOutputPulseAudio::WriteAudio(uchar *aubuf, int size)
         while (to_write > 0)
         {
             write_status = 0;
-            writable = pa_stream_writable_size(pstream);
+            size_t writable = pa_stream_writable_size(pstream);
             if (writable > 0)
             {
-                write = min(to_write, writable);
+                size_t write = min(to_write, writable);
                 write_status = pa_stream_write(pstream, buf_ptr, write,
                                                NULL, 0, PA_SEEK_RELATIVE);
-                if (!write_status)
-                {
-                    buf_ptr += write;
-                    to_write -= write;
-                }
-                else
+
+                if (0 != write_status)
                     break;
+
+                buf_ptr += write;
+                to_write -= write;
             }
-            else if (writable < 0)
-                break;
-            else // writable == 0
+            else
+            {
                 pa_threaded_mainloop_wait(mainloop);
+            }
         }
         pa_threaded_mainloop_unlock(mainloop);
 
         if (to_write > 0)
         {
-            if (writable < 0)
-            {
-                cstate = pa_context_get_state(pcontext);
-                sstate = pa_stream_get_state(pstream);
-                VBERROR(fn_log_tag +
-                        QString("stream unfit for writing (writable < 0), "
-                                "context state: %1, stream state: %2")
-                        .arg(cstate,0,16).arg(sstate,0,16));
-            }
-
             if (write_status != 0)
                 VBERROR(fn_log_tag + QString("stream write failed: %1")
                                      .arg(write_status == PA_ERR_BADSTATE
@@ -359,19 +346,42 @@ void AudioOutputPulseAudio::SetVolumeChannel(int channel, int volume)
     volume = min(100, volume);
     volume = max(0, volume);
 
-    uint32_t sink_index = pa_stream_get_device_index(pstream);
-    pa_threaded_mainloop_lock(mainloop);
-    pa_operation *op =
-        pa_context_set_sink_volume_by_index(pcontext, sink_index,
-                                            &volume_control,
-                                            OpCompletionCallback, this);
-    pa_threaded_mainloop_unlock(mainloop);
-    if (op)
-        pa_operation_unref(op);
+    if (gCoreContext->GetSetting("MixerControl", "PCM").toLower() == "pcm")
+    {
+        uint32_t stream_index = pa_stream_get_index(pstream);
+        pa_threaded_mainloop_lock(mainloop);
+        pa_operation *op =
+            pa_context_set_sink_input_volume(pcontext, stream_index,
+                                             &volume_control,
+                                             OpCompletionCallback, this);
+        pa_threaded_mainloop_unlock(mainloop);
+        if (op)
+            pa_operation_unref(op);
+        else
+            VBERROR(fn_log_tag +
+                    QString("set stream volume operation failed, stream %1, "
+                            "error %2 ")
+                    .arg(stream_index)
+                    .arg(pa_strerror(pa_context_errno(pcontext))));
+    }
     else
-        VBERROR(fn_log_tag +
-                QString("set sink volume operation failed, sink %1, error %2 ")
-                .arg(sink_index).arg(pa_strerror(pa_context_errno(pcontext))));
+    {
+        uint32_t sink_index = pa_stream_get_device_index(pstream);
+        pa_threaded_mainloop_lock(mainloop);
+        pa_operation *op =
+            pa_context_set_sink_volume_by_index(pcontext, sink_index,
+                                                &volume_control,
+                                                OpCompletionCallback, this);
+        pa_threaded_mainloop_unlock(mainloop);
+        if (op)
+            pa_operation_unref(op);
+        else
+            VBERROR(fn_log_tag +
+                    QString("set sink volume operation failed, sink %1, "
+                            "error %2 ")
+                    .arg(sink_index)
+                    .arg(pa_strerror(pa_context_errno(pcontext))));
+    }
 }
 
 void AudioOutputPulseAudio::Drain(void)
@@ -397,7 +407,18 @@ bool AudioOutputPulseAudio::ContextConnect(void)
         pcontext = NULL;
         return false;
     }
-    pcontext = pa_context_new(pa_threaded_mainloop_get_api(mainloop), "MythTV");
+    pa_proplist *proplist = pa_proplist_new();
+    if (!proplist)
+    {
+        VBERROR(fn_log_tag + QString("failed to create new proplist"));
+        return false;
+    }
+    pa_proplist_sets(proplist, PA_PROP_APPLICATION_NAME, "MythTV");
+    pa_proplist_sets(proplist, PA_PROP_APPLICATION_ICON_NAME, "mythtv");
+    pa_proplist_sets(proplist, PA_PROP_MEDIA_ROLE, "video");
+    pcontext =
+        pa_context_new_with_proplist(pa_threaded_mainloop_get_api(mainloop),
+                                     "MythTV", proplist);
     if (!pcontext)
     {
         VBERROR(fn_log_tag + "failed to acquire new context");
@@ -503,8 +524,17 @@ char *AudioOutputPulseAudio::ChooseHost(void)
 
 bool AudioOutputPulseAudio::ConnectPlaybackStream(void)
 {
-    pstream = pa_stream_new(pcontext, "MythTV playback", &sample_spec,
-                            &channel_map);
+    QString fn_log_tag = "ConnectPlaybackStream, ";
+    pa_proplist *proplist = pa_proplist_new();
+    if (!proplist)
+    {
+        VBERROR(fn_log_tag + QString("failed to create new proplist"));
+        return false;
+    }
+    pa_proplist_sets(proplist, PA_PROP_MEDIA_ROLE, "video");
+    pstream =
+        pa_stream_new_with_proplist(pcontext, "MythTV playback", &sample_spec,
+                                    &channel_map, proplist);
     if (!pstream)
     {
         VBERROR("failed to create new playback stream");

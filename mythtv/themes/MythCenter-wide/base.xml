@@ -300,8 +300,6 @@
                     <align>vcenter</align>
                 </textarea>
             </state>
-            <state name="selectedinactive" from="active" />
-<!--
             <state name="selectedinactive" from="active" >
                <shape name="selectbar">
                     <area>28,0,1144,30</area>
@@ -311,7 +309,6 @@
                     <cornerradius>4</cornerradius>
                 </shape>
             </state>
--->
         </statetype>
         <statetype name="upscrollarrow">
             <position>1190,6</position>
@@ -497,7 +494,7 @@
         <statetype name="buttonitem">
             <area>0,0,100%,100%</area>
             <state name="active">
-                <area>0,0,-20,100%</area>
+                <area>0,0,100%,100%</area>
                 <shape name="background" from="basewidgetshape" />
                 <textarea name="buttontext">
                     <area>10,4,-40,-4</area>
@@ -750,6 +747,8 @@
             <drawfrombottom>yes</drawfrombottom>
             <showarrow>no</showarrow>
             <wrapstyle>selection</wrapstyle>
+            <triggerevent context="Global" action="ESCAPE">LEFT</triggerevent>
+            <triggerevent context="Global" action="SELECT">RIGHT</triggerevent>
             <statetype name="buttonitem">
                 <state name="active">
                     <textarea name="buttontext">
@@ -926,6 +925,7 @@
             <area>4,70,500,440</area>
             <layout>grid</layout>
             <buttonarea>0,0,500,430</buttonarea>
+            <triggerevent context="Global" action="ESCAPE">LEFT</triggerevent>
             <statetype name="buttonitem">
                 <area>0,0,166,106</area>
                 <state name="active">
@@ -1080,6 +1080,7 @@
             <spacing>5</spacing>
             <wrapstyle>selection</wrapstyle>
             <buttonarea>0,0,100%,97%</buttonarea>
+            <triggerevent context="Global" action="ESCAPE">LEFT</triggerevent>
             <statetype name="buttonitem">
                 <state name="active">
                     <area>0,0,100%,85</area>

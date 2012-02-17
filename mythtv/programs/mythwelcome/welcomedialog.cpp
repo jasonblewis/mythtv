@@ -250,7 +250,7 @@ bool WelcomeDialog::keyPressEvent(QKeyEvent *event)
             MythWelcomeSettings settings;
             if (kDialogCodeAccepted == settings.exec())
             {
-                RemoteSendMessage("CLEAR_SETTINGS_CACHE");
+                gCoreContext->SendMessage("CLEAR_SETTINGS_CACHE");
                 updateStatus();
                 updateScreen();
 
@@ -262,7 +262,7 @@ bool WelcomeDialog::keyPressEvent(QKeyEvent *event)
         {
             MythShutdownSettings settings;
             if (kDialogCodeAccepted == settings.exec())
-                RemoteSendMessage("CLEAR_SETTINGS_CACHE");
+                gCoreContext->SendMessage("CLEAR_SETTINGS_CACHE");
         }
         else if (action == "0")
         {
@@ -445,17 +445,9 @@ void WelcomeDialog::runMythFillDatabase()
     QString mfpath = gCoreContext->GetSetting("MythFillDatabasePath",
                                           "mythfilldatabase");
     QString mfarg = gCoreContext->GetSetting("MythFillDatabaseArgs", "");
-    QString mflog = gCoreContext->GetSetting("MythFillDatabaseLog",
-                                         "/var/log/mythfilldatabase.log");
 
-    // TODO: cleanup after mfd no longer uses wget
-    if (mflog.isEmpty())
-    {
-        command = QString("%1 %2").arg(mfpath).arg(mfarg);
-        command += logPropagateArgs;
-    }
-    else
-        command = QString("%1 %2 >>%3 2>&1").arg(mfpath).arg(mfarg).arg(mflog);
+    command = QString("%1 %2").arg(mfpath).arg(mfarg);
+    command += logPropagateArgs;
 
     command += "&";
 

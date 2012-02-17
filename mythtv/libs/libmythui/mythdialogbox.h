@@ -17,6 +17,8 @@ class MythUIButton;
 class MythUITextEdit;
 class MythUIImage;
 class MythUIStateType;
+class MythMenu;
+
 
 /**
  *  \class DialogCompletionEvent
@@ -49,6 +51,48 @@ class MUI_PUBLIC DialogCompletionEvent : public QEvent
     QVariant m_resultData;
 };
 
+
+class MUI_PUBLIC MythMenuItem
+{
+  public:
+    MythMenuItem(const QString &text, QVariant data = 0, bool checked = false, MythMenu *subMenu = NULL) :
+        Text(text), Data(data), Checked(checked), SubMenu(subMenu), UseSlot(false) {}
+    MythMenuItem(const QString &text, const char *slot, bool checked = false, MythMenu *subMenu = NULL) :
+        Text(text), Data(qVariantFromValue(slot)), Checked(checked), SubMenu(subMenu), UseSlot(true) {}
+
+    QString   Text;
+    QVariant  Data;
+    bool      Checked;
+    MythMenu *SubMenu;
+    bool      UseSlot;
+};
+
+class MUI_PUBLIC MythMenu
+{
+  friend class MythDialogBox;
+
+  public:
+    MythMenu(const QString &text, QObject *retobject, const QString &resultid);
+    MythMenu(const QString &title, const QString &text, QObject *retobject, const QString &resultid);
+    ~MythMenu(void);
+
+    void AddItem(const QString &title, QVariant data = 0, MythMenu *subMenu = NULL,
+                 bool selected = false, bool checked = false);
+    void AddItem(const QString &title, const char *slot, MythMenu *subMenu = NULL,
+                 bool selected = false, bool checked = false);
+
+    void SetParent(MythMenu *parent) { m_parentMenu = parent; }
+
+  private:
+    MythMenu *m_parentMenu;
+    QString   m_title;
+    QString   m_text;
+    QString   m_resultid;
+    QObject  *m_retObject;
+    QList<MythMenuItem*> m_menuItems;
+    int m_selectedItem;
+};
+
 /**
  *  \class MythDialogBox
  *
@@ -67,8 +111,14 @@ class MUI_PUBLIC MythDialogBox : public MythScreenType
     MythDialogBox(const QString &title, const QString &text,
                   MythScreenStack *parent, const char *name,
                   bool fullscreen = false, bool osd = false);
+    MythDialogBox(MythMenu* menu, MythScreenStack *parent, const char *name,
+                   bool fullscreen = false, bool osd = false);
+
+    ~MythDialogBox(void);
 
     virtual bool Create(void);
+
+    void SetMenuItems(MythMenu *menu);
 
     void SetReturnEvent(QObject *retobject, const QString &resultid);
     void SetBackAction(const QString &text, QVariant data);
@@ -92,6 +142,7 @@ class MUI_PUBLIC MythDialogBox : public MythScreenType
 
   protected:
     void SendEvent(int res, QString text = "", QVariant data = 0);
+    void updateMenu(void);
 
     MythUIText       *m_titlearea;
     MythUIText       *m_textarea;
@@ -109,7 +160,11 @@ class MUI_PUBLIC MythDialogBox : public MythScreenType
     QVariant m_backdata;
     QString  m_exittext;
     QVariant m_exitdata;
+
+    MythMenu *m_menu;
+    MythMenu *m_currentMenu;
 };
+
 
 /**
  *  \class MythConfirmationDialog
@@ -130,6 +185,7 @@ class MUI_PUBLIC MythConfirmationDialog : public MythScreenType
     bool Create(void);
     void SetReturnEvent(QObject *retobject, const QString &resultid);
     void SetData(QVariant data) { m_resultData = data; }
+    void SetMessage(const QString &message);
 
     bool keyPressEvent(QKeyEvent *event);
 
@@ -138,6 +194,7 @@ class MUI_PUBLIC MythConfirmationDialog : public MythScreenType
 
   private:
     void sendResult(bool);
+    MythUIText *m_messageText;
     QString m_message;
     bool m_showCancel;
     QObject *m_retObject;
@@ -237,9 +294,71 @@ class MUI_PUBLIC MythUISearchDialog : public MythScreenType
     void slotUpdateList(void);
 };
 
+/**
+ * \class MythUITimeInputDialog
+ * \brief Provide a dialog for inputting a date/time or both
+ *
+ * \param message The message to display to the user explaining what you are
+ *                asking for
+ * \param startTime The date/time to start the list, defaults to now
+ */
+class MUI_PUBLIC MythTimeInputDialog : public MythScreenType
+{
+    Q_OBJECT
+
+  public:
+    // FIXME Not sure about this enum
+    enum TimeInputResolution {
+        // Date Resolution
+        kNoDate       = 0x01,
+        kYear         = 0x02,
+        kMonth        = 0x04,
+        kDay          = 0x08,
+
+        // Time Resolution
+        kNoTime       = 0x10,
+        kHours        = 0x20,
+        kMinutes      = 0x40,
+
+        // Work forward/backwards or backwards and fowards from start time
+        kFutureDates  = 0x100,
+        kPastDates    = 0x200,
+        kAllDates     = 0x300
+    };
+
+    MythTimeInputDialog(MythScreenStack *parent, const QString &message,
+                        int resolutionFlags,
+                        QDateTime startTime = QDateTime::currentDateTime(),
+                        int dayLimit = 14);
+
+    bool Create();
+    void SetReturnEvent(QObject *retobject, const QString &resultid);
+
+  signals:
+    void haveResult(QDateTime time);
+
+  private slots:
+    void okClicked(void);
+
+  private:
+    QString           m_message;
+    QDateTime         m_startTime;
+    int               m_resolution;
+    int               m_rangeLimit;
+    QStringList       m_list;
+    QString           m_currentValue;
+
+    MythUIButtonList *m_dateList;
+    MythUIButtonList *m_timeList;
+
+    QObject          *m_retObject;
+    QString           m_id;
+};
+
 MUI_PUBLIC MythConfirmationDialog  *ShowOkPopup(const QString &message, QObject *parent = NULL,
                                              const char *slot = NULL, bool showCancel = false);
 
+Q_DECLARE_METATYPE(MythMenuItem*)
 Q_DECLARE_METATYPE(const char*)
 Q_DECLARE_METATYPE(QFileInfo)
 

@@ -133,13 +133,6 @@ as the Plextor ConvertX.
 The 'hostname' field is another important field for all cards
 as it specifies which backend the capture card is connected to.
 
-The 'defaultinput' field is a another important field for all
-cards except "FIREWIRE", "FREEBOX", "HDHOMERUN", and "IMPORT" cards.
-It specifies which
-input of the card to use. This does not have to mean a specific
-physical input, but may also indicate a different use for the
-same physical input.
-
 The 'signal_timeout' and 'channel_timeout' indicate in
 milliseconds how long it should take to get a signal and
 channel lock respectively.
@@ -5470,6 +5463,16 @@ NULL
     if (dbver == "1261")
     {
         const char *updates[] = {
+"UPDATE program SET description = '' WHERE description IS NULL;",
+"UPDATE record SET description = '' WHERE description IS NULL;",
+"UPDATE recorded SET description = '' WHERE description IS NULL;",
+"UPDATE recordedprogram SET description = '' WHERE description IS NULL;",
+"UPDATE oldrecorded SET description = '' WHERE description IS NULL;",
+"UPDATE mythlog SET details = '' WHERE details IS NULL;",
+"UPDATE settings SET data = '' WHERE data IS NULL;",
+"UPDATE powerpriority SET selectclause = '' WHERE selectclause IS NULL;",
+"UPDATE customexample SET fromclause = '' WHERE fromclause IS NULL;",
+"UPDATE customexample SET whereclause = '' WHERE whereclause IS NULL;",
 "ALTER TABLE program MODIFY COLUMN description VARCHAR(16000) "
 "    NOT NULL default '';",
 "ALTER TABLE record MODIFY COLUMN description VARCHAR(16000) "
@@ -5589,7 +5592,6 @@ NULL
         if (!performActualUpdate(updates, "1269", dbver))
             return false;
     }
-
 
     if (dbver == "1269")
     {
@@ -5876,6 +5878,356 @@ NULL
 NULL
 };
         if (!performActualUpdate(updates, "1282", dbver))
+            return false;
+    }
+
+    if (dbver == "1282")
+    {
+        const char *updates[] = {
+"UPDATE settings"
+"   SET data = SUBSTR(data, INSTR(data, 'share/mythtv/metadata')+13)"
+" WHERE value "
+"    IN ('TelevisionGrabber', "
+"        'MovieGrabber', "
+"        'mythgame.MetadataGrabber');",
+NULL
+};
+
+        if (!performActualUpdate(updates, "1283", dbver))
+            return false;
+    }
+
+    if (dbver == "1283")
+    {
+        const char *updates[] = {
+"UPDATE record SET filter = filter | 1 WHERE record.dupin & 0x20",
+"UPDATE record SET filter = filter | 2 WHERE record.dupin & 0x40",
+"UPDATE record SET filter = filter | 5 WHERE record.dupin & 0x80",
+"UPDATE record SET dupin = dupin & ~0xe0",
+"INSERT INTO recordfilter (filterid, description, clause, newruledefault) "
+"    VALUES (6, 'This Episode', '(program.programid <> '''' AND program.programid = RECTABLE.programid) OR (program.programid = '''' AND program.subtitle = RECTABLE.subtitle AND program.description = RECTABLE.description)', 0);",
+NULL
+};
+
+        if (!performActualUpdate(updates, "1284", dbver))
+            return false;
+    }
+
+    if (dbver == "1284")
+    {
+        const char *updates[] = {
+"REPLACE INTO recordfilter (filterid, description, clause, newruledefault) "
+"    VALUES (6, 'This Episode', '(RECTABLE.programid <> '''' AND program.programid = RECTABLE.programid) OR (RECTABLE.programid = '''' AND program.subtitle = RECTABLE.subtitle AND program.description = RECTABLE.description)', 0);",
+NULL
+};
+
+        if (!performActualUpdate(updates, "1285", dbver))
+            return false;
+    }
+
+    if (dbver == "1285")
+    {
+        const char *updates[] = {
+"DELETE FROM profilegroups WHERE id >= 17;",
+"DELETE FROM recordingprofiles WHERE profilegroup >= 17;",
+"INSERT INTO profilegroups SET id = '17', name = 'Ceton Recorder',"
+" cardtype = 'CETON', is_default = 1;",
+"INSERT INTO recordingprofiles SET name = \"Default\", profilegroup = 17;",
+"INSERT INTO recordingprofiles SET name = \"Live TV\", profilegroup = 17;",
+"INSERT INTO recordingprofiles SET name = \"High Quality\", profilegroup = 17;",
+"INSERT INTO recordingprofiles SET name = \"Low Quality\", profilegroup = 17;",
+NULL
+};
+        if (!performActualUpdate(updates, "1286", dbver))
+            return false;
+    }
+
+    if (dbver == "1286")
+    {
+        MSqlQuery query(MSqlQuery::InitCon());
+        query.prepare("SELECT cardid, videodevice "
+                      "FROM capturecard "
+                      "WHERE cardtype='CETON'");
+        if (!query.exec())
+        {
+            LOG(VB_GENERAL, LOG_ERR,
+                "Unable to query capturecard table for upgrade to 1287.");
+            return false;
+        }
+
+        MSqlQuery update(MSqlQuery::InitCon());
+        update.prepare("UPDATE capturecard SET videodevice=:VIDDEV "
+                       "WHERE cardid=:CARDID");
+        while (query.next())
+        {
+            uint cardid = query.value(0).toUInt();
+            QString videodevice = query.value(1).toString();
+            QStringList parts = videodevice.split("-");
+            if (parts.size() != 2)
+            {
+                LOG(VB_GENERAL, LOG_ERR,
+                    "Unable to parse videodevice in upgrade to 1287.");
+                return false;
+            }
+            if (parts[1].contains("."))
+                continue; // already in new format, skip it..
+
+            int input = max(parts[1].toInt() - 1, 0);
+            videodevice = parts[0] + QString("-0.%1").arg(input);
+            update.bindValue(":CARDID", cardid);
+            update.bindValue(":VIDDEV", videodevice);
+            if (!update.exec())
+            {
+                LOG(VB_GENERAL, LOG_ERR,
+                    "Failed to update videodevice in upgrade to 1287.");
+                return false;
+            }
+        }
+
+        if (!UpdateDBVersionNumber("1287", dbver))
+            return false;
+    }
+
+    if (dbver == "1287")
+    {
+        const char *updates[] = {
+"CREATE TABLE IF NOT EXISTS livestream ( "
+"    id INT UNSIGNED AUTO_INCREMENT NOT NULL PRIMARY KEY, "
+"    width INT UNSIGNED NOT NULL, "
+"    height INT UNSIGNED NOT NULL, "
+"    bitrate INT UNSIGNED NOT NULL, "
+"    audiobitrate INT UNSIGNED NOT NULL, "
+"    samplerate INT UNSIGNED NOT NULL, "
+"    audioonlybitrate INT UNSIGNED NOT NULL, "
+"    segmentsize INT UNSIGNED NOT NULL DEFAULT 10, "
+"    maxsegments INT UNSIGNED NOT NULL DEFAULT 0, "
+"    startsegment INT UNSIGNED NOT NULL DEFAULT 0, "
+"    currentsegment INT UNSIGNED NOT NULL DEFAULT 0, "
+"    segmentcount INT UNSIGNED NOT NULL DEFAULT 0, "
+"    percentcomplete INT UNSIGNED NOT NULL DEFAULT 0, "
+"    created DATETIME NOT NULL, "
+"    lastmodified DATETIME NOT NULL, "
+"    relativeurl VARCHAR(512) NOT NULL, "
+"    fullurl VARCHAR(1024) NOT NULL, "
+"    status INT UNSIGNED NOT NULL DEFAULT 0, "
+"    statusmessage VARCHAR(256) NOT NULL, "
+"    sourcefile VARCHAR(512) NOT NULL, "
+"    sourcehost VARCHAR(64) NOT NULL, "
+"    sourcewidth INT UNSIGNED NOT NULL DEFAULT 0, "
+"    sourceheight INT UNSIGNED NOT NULL DEFAULT 0, "
+"    outdir VARCHAR(256) NOT NULL, "
+"    outbase VARCHAR(128) NOT NULL "
+") ENGINE=MyISAM DEFAULT CHARSET=utf8; ",
+NULL
+};
+
+        if (!performActualUpdate(updates, "1288", dbver))
+            return false;
+    }
+
+    if (dbver == "1288")
+    {
+        const char *updates[] = {
+"ALTER TABLE recordedprogram CHANGE COLUMN videoprop videoprop "
+"    SET('HDTV', 'WIDESCREEN', 'AVC', '720', '1080', 'DAMAGED') NOT NULL; ",
+NULL
+};
+        if (!performActualUpdate(updates, "1289", dbver))
+            return false;
+    }
+
+    if (dbver == "1289")
+    {
+        const char *updates[] = {
+"DROP TABLE IF EXISTS netvisionrssitems;",
+"DROP TABLE IF EXISTS netvisionsearchgrabbers;",
+"DROP TABLE IF EXISTS netvisionsites;",
+"DROP TABLE IF EXISTS netvisiontreegrabbers;",
+"DROP TABLE IF EXISTS netvisiontreeitems;",
+NULL
+};
+
+        if (!performActualUpdate(updates, "1290", dbver))
+            return false;
+    }
+
+    if (dbver == "1290")
+    {
+        const char *updates[] = {
+"ALTER TABLE logging "
+" ALTER COLUMN host SET DEFAULT '', "
+" ALTER COLUMN application SET DEFAULT '', "
+" ALTER COLUMN pid SET DEFAULT '0', "
+" ALTER COLUMN thread SET DEFAULT '', "
+" ALTER COLUMN level SET DEFAULT '0';",
+"ALTER TABLE logging "
+" ADD COLUMN tid INT(11) NOT NULL DEFAULT '0' AFTER pid, "
+" ADD COLUMN filename VARCHAR(255) NOT NULL DEFAULT '' AFTER thread, "
+" ADD COLUMN line INT(11) NOT NULL DEFAULT '0' AFTER filename, "
+" ADD COLUMN function VARCHAR(255) NOT NULL DEFAULT '' AFTER line;",
+NULL
+};
+
+        if (!performActualUpdate(updates, "1291", dbver))
+            return false;
+    }
+
+    if (dbver == "1291")
+    {
+        const char *updates[] = {
+"UPDATE recorded r, recordedprogram rp SET r.duplicate=0 "
+"   WHERE r.chanid=rp.chanid AND r.progstart=rp.starttime AND "
+"      FIND_IN_SET('DAMAGED', rp.videoprop);",
+NULL
+};
+
+        if (!performActualUpdate(updates, "1292", dbver))
+            return false;
+    }
+
+    if (dbver == "1292")
+    {
+        const char *updates[] = {
+"ALTER TABLE cardinput "
+"  ADD COLUMN schedorder INT(10) UNSIGNED NOT NULL DEFAULT '0', "
+"  ADD COLUMN livetvorder INT(10) UNSIGNED NOT NULL DEFAULT '0';",
+"UPDATE cardinput SET schedorder = cardinputid;",
+"UPDATE cardinput SET livetvorder = cardid;",
+NULL
+};
+
+        if (gCoreContext->GetNumSetting("LastFreeCard", 0))
+        {
+            updates[2] = 
+                "UPDATE cardinput SET livetvorder = "
+                "  (SELECT MAX(cardid) FROM capturecard) - cardid + 1;";
+        }
+
+        if (!performActualUpdate(updates, "1293", dbver))
+            return false;
+    }
+
+    if (dbver == "1293")
+    {
+        const char *updates[] = {
+"TRUNCATE TABLE recordmatch",
+"ALTER TABLE recordmatch DROP INDEX recordid",
+"ALTER TABLE recordmatch ADD UNIQUE INDEX (recordid, chanid, starttime)",
+"UPDATE recordfilter SET description='Prime time' WHERE filterid=3",
+"UPDATE recordfilter SET description='This episode' WHERE filterid=6",
+"REPLACE INTO recordfilter (filterid, description, clause, newruledefault) "
+"    VALUES (7, 'This series', '(RECTABLE.seriesid <> '''' AND program.seriesid = RECTABLE.seriesid)', 0);",
+NULL
+};
+
+        if (!performActualUpdate(updates, "1294", dbver))
+            return false;
+    }
+
+    if (dbver == "1294")
+    {
+        const char *updates[] = {
+"CREATE TABLE videocollection ("
+"  intid int(10) unsigned NOT NULL AUTO_INCREMENT,"
+"  title varchar(256) NOT NULL,"
+"  contenttype set('MOVIE', 'TELEVISION', 'ADULT', 'MUSICVIDEO', 'HOMEVIDEO') NOT NULL default '',"
+"  plot text,"
+"  network varchar(128) DEFAULT NULL,"
+"  inetref varchar(128) NOT NULL,"
+"  certification varchar(128) DEFAULT NULL,"
+"  genre int(10) unsigned DEFAULT '0',"
+"  releasedate date DEFAULT NULL,"
+"  language varchar(10) DEFAULT NULL,"
+"  status varchar(64) DEFAULT NULL,"
+"  rating float DEFAULT 0,"
+"  ratingcount int(10) DEFAULT 0,"
+"  runtime smallint(5) unsigned DEFAULT '0',"
+"  banner text,"
+"  fanart text,"
+"  coverart text,"
+"  PRIMARY KEY (intid),"
+"  KEY title (title)"
+") ENGINE=MyISAM DEFAULT CHARSET=utf8;",
+"CREATE TABLE videopathinfo ("
+"  intid int(10) unsigned NOT NULL AUTO_INCREMENT,"
+"  path text,"
+"  contenttype set('MOVIE', 'TELEVISION', 'ADULT', 'MUSICVIDEO', 'HOMEVIDEO') NOT NULL default '',"
+"  collectionref int(10) default '0',"
+"  recurse tinyint(1) default '0',"
+"  PRIMARY KEY (intid)"
+") ENGINE=MyISAM DEFAULT CHARSET=utf8;",
+"ALTER TABLE videometadata ADD collectionref int(10) NOT NULL DEFAULT '0' AFTER inetref;",
+"ALTER TABLE videometadata ADD playcount int(10) NOT NULL DEFAULT '0' AFTER length;",
+"ALTER TABLE videometadata ADD contenttype set('MOVIE', 'TELEVISION', 'ADULT', 'MUSICVIDEO', 'HOMEVIDEO') NOT NULL default ''",
+"UPDATE videometadata SET contenttype = 'MOVIE';",
+"UPDATE videometadata SET contenttype = 'TELEVISION' WHERE season > 0 OR episode > 0;",
+NULL
+};
+
+        if (!performActualUpdate(updates, "1295", dbver))
+            return false;
+    }
+
+    if (dbver == "1295")
+    {
+        MSqlQuery query(MSqlQuery::InitCon());
+        query.prepare("SELECT data, hostname "
+                      "FROM settings "
+                      "WHERE value='BackendServerIP'");
+        if (!query.exec())
+        {
+            LOG(VB_GENERAL, LOG_ERR,
+                "Unable to repair IP addresses for IPv4/IPv6 split.");
+            return false;
+        }
+
+        MSqlQuery update(MSqlQuery::InitCon()), insert(MSqlQuery::InitCon());
+        update.prepare("UPDATE settings "
+                          "SET data=:IP4ADDY "
+                       "WHERE value='BackendServerIP' "
+                      "AND hostname=:HOSTNAME");
+        insert.prepare("INSERT INTO settings "
+                       "SET value='BackendServerIP6',"
+                            "data=:IP6ADDY,"
+                        "hostname=:HOSTNAME");
+        while (query.next())
+        {
+            QHostAddress oldaddr(query.value(0).toString());
+            QString hostname = query.value(1).toString();
+
+            update.bindValue(":HOSTNAME", hostname);
+            insert.bindValue(":HOSTNAME", hostname);
+
+            if (oldaddr.protocol() == QAbstractSocket::IPv6Protocol)
+            {
+                update.bindValue(":IP4ADDY", "127.0.0.1");
+                insert.bindValue(":IP6ADDY", query.value(0).toString());
+            }
+            else if (oldaddr.protocol() == QAbstractSocket::IPv4Protocol)
+            {
+                update.bindValue(":IP4ADDY", query.value(0).toString());
+                insert.bindValue(":IP6ADDY", "::1");
+            }
+            else
+            {
+                update.bindValue(":IP4ADDY", "127.0.0.1");
+                insert.bindValue(":IP6ADDY", "::1");
+                LOG(VB_GENERAL, LOG_CRIT,
+                    QString("Invalid address string '%1' found on %2. "
+                            "Reverting to localhost defaults.")
+                        .arg(query.value(0).toString()).arg(hostname));
+            }
+
+            if (!update.exec() || !insert.exec())
+            {
+                LOG(VB_GENERAL, LOG_ERR, QString("Failed to separate IPv4 "
+                          "and IPv6 addresses for %1").arg(hostname));
+                return false;
+            }
+
+        }
+
+        if (!UpdateDBVersionNumber("1296", dbver))
             return false;
     }
 

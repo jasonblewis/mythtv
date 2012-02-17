@@ -7,7 +7,6 @@
 #include <QList>
 
 #include "mythcontext.h"
-#include "mythmediamonitor.h"
 #include "util.h"
 
 #include "mythgenerictree.h"
@@ -301,6 +300,7 @@ static MythGenericTree *AddDirNode(MythGenericTree *where_to_add,
     sub_node->setOrderingIndex(kNodeSort);
     sub_node->SetData(QVariant::fromValue(TreeNodeData(fqPath, host, prefix)));
     sub_node->SetText(name, "title");
+    sub_node->DisplayState("subfolder", "nodetype");
 
     // ...and the updir node.
     if (add_up_dirs)
@@ -310,6 +310,7 @@ static MythGenericTree *AddDirNode(MythGenericTree *where_to_add,
                                   true, false);
         up_node->setAttribute(kNodeSort, kOrderUp);
         up_node->setOrderingIndex(kNodeSort);
+        up_node->DisplayState("subfolder", "nodetype");
     }
 
     return sub_node;
@@ -322,31 +323,22 @@ static int AddFileNode(MythGenericTree *where_to_add, QString name,
     sub_node->setAttribute(kNodeSort, kOrderItem);
     sub_node->setOrderingIndex(kNodeSort);
     sub_node->SetData(QVariant::fromValue(TreeNodeData(metadata)));
+
+    // Text
     QHash<QString, QString> textMap;
     metadata->toMap(textMap);
     sub_node->SetTextFromMap(textMap);
-    if (!metadata->GetHost().isEmpty())
-    {
-        QString coverart = generate_file_url("Coverart",
-                                             metadata->GetHost(), metadata->GetCoverFile());
-        sub_node->SetImage(coverart, "coverart");
-        QString banner = generate_file_url("Banners",
-                                           metadata->GetHost(), metadata->GetBanner());
-        sub_node->SetImage(banner, "banner");
-        QString fanart = generate_file_url("Fanart",
-                                           metadata->GetHost(), metadata->GetFanart());
-        sub_node->SetImage(fanart, "fanart");
-        QString screenshot = generate_file_url("Screenshots",
-                                               metadata->GetHost(), metadata->GetScreenshot());
-        sub_node->SetImage(screenshot, "screenshot");
-    }
-    else
-    {
-        sub_node->SetImage(metadata->GetCoverFile(), "coverart");
-        sub_node->SetImage(metadata->GetBanner(), "banner");
-        sub_node->SetImage(metadata->GetFanart(), "fanart");
-        sub_node->SetImage(metadata->GetScreenshot(), "screenshot");
-    }
+
+    // Images
+    QHash<QString, QString> imageMap;
+    metadata->GetImageMap(imageMap);
+    sub_node->SetImageFromMap(imageMap);
+    sub_node->SetImage("buttonimage", imageMap["smartimage"]);
+
+    // Statetypes
+    QHash<QString, QString> stateMap;
+    metadata->GetStateMap(stateMap);
+    sub_node->DisplayStateFromMap(stateMap);
 
     return 1;
 }
@@ -377,6 +369,7 @@ class VideoListImp
 
     void refreshList(bool filebrowser, const ParentalLevel &parental_level,
                      bool flatlist, int group_type);
+    bool refreshNode(MythGenericTree *node);
 
     unsigned int count() const
     {
@@ -497,6 +490,11 @@ void VideoList::refreshList(bool filebrowser,
     m_imp->refreshList(filebrowser, parental_level, flat_list, group_type);
 }
 
+bool VideoList::refreshNode(MythGenericTree *node)
+{
+    return m_imp->refreshNode(node);
+}
+
 unsigned int VideoList::count() const
 {
     return m_imp->count();
@@ -556,6 +554,13 @@ VideoListImp::VideoListImp() : m_metadata_view_tree("", "top"),
 void VideoListImp::build_generic_tree(MythGenericTree *dst, meta_dir_node *src,
                                       bool include_updirs)
 {
+    if (src->DataIsValid())
+    {
+        dst->setInt(kDynamicSubFolder);
+        dst->SetData(src->GetData());
+        return;
+    }
+
     for (meta_dir_node::const_dir_iterator dir = src->dirs_begin();
          dir != src->dirs_end(); ++dir)
     {
@@ -582,13 +587,18 @@ void VideoListImp::build_generic_tree(MythGenericTree *dst, meta_dir_node *src,
         {
             QString seas = QString::number((*entry)->getData()->GetSeason());
             QString ep = QString::number((*entry)->getData()->GetEpisode());
-            QString tit = (*entry)->getData()->GetTitle();
-            QString sub = (*entry)->getData()->GetSubtitle();
+            QString title = (*entry)->getData()->GetTitle();
+            QString subtitle = (*entry)->getData()->GetSubtitle();
             if (ep.size() < 2)
                 ep.prepend("0");
-            QString TitSeasEpSub = QString("%1 %2x%3 - %4").arg(tit).arg(seas)
-                                                           .arg(ep).arg(sub);
-            AddFileNode(dst, TitSeasEpSub, (*entry)->getData());
+            QString displayTitle = QString("%1 %2x%3 - %4").arg(title).arg(seas)
+                                                           .arg(ep)
+                                                           .arg(subtitle);
+            if (src->getName() == title)
+                displayTitle = QString("%2x%3 - %4").arg(seas).arg(ep)
+                                                       .arg(subtitle);
+
+            AddFileNode(dst, displayTitle, (*entry)->getData());
         }
         else if ((*entry)->getData()->GetSubtitle().isEmpty())
             AddFileNode(dst, (*entry)->getData()->GetTitle(), (*entry)->getData());
@@ -639,6 +649,29 @@ MythGenericTree *VideoListImp::buildVideoList(bool filebrowser, bool flatlist,
     }
 
     return video_tree_root.get();
+}
+
+bool VideoListImp::refreshNode(MythGenericTree *node)
+{
+    if (!node)
+        return false;
+
+    // node->GetData() provides information on how/where to refresh the
+    // data for this node
+
+    QVariant data = node->GetData();
+    if (!data.isValid())
+        return false;
+
+    // currently only UPNPScanner can refresh data
+    if (UPNPScanner::Instance() && UPNPScanner::Instance()->GetMetadata(data))
+    {
+        // force a refresh
+        m_metadata_list_type = VideoListImp::ltNone;
+        return true;
+    }
+
+    return false;
 }
 
 void VideoListImp::refreshList(bool filebrowser,
@@ -971,77 +1004,10 @@ void VideoListImp::buildDbList()
         video_root->setName("videos");
         ptnm.insert(prefix_to_node_map::value_type(test_prefix, video_root));
     }
-
-    smart_dir_node unknown_prefix_root(new meta_dir_node("",
-                                               QObject::tr("Unknown Prefix"),
-                                               NULL, true));
-
-    smart_dir_node sg_prefix_root(new meta_dir_node("",
-                                               QObject::tr("Storage Groups"),
-                                               NULL, true));
     meta_dir_node *insert_hint = NULL;
     for (metadata_view_list::iterator p = mlist.begin(); p != mlist.end(); ++p)
     {
-        bool found_prefix = false;
-        if ((*p)->GetFilename().startsWith(test_prefix))
-        {
-            found_prefix = true;
-        }
-        else
-        {
-            for (QStringList::const_iterator prefix = dirs.begin();
-                 prefix != dirs.end(); ++prefix)
-            {
-                if ((*p)->GetFilename().startsWith(*prefix))
-                {
-                    test_prefix = *prefix;
-                    found_prefix = true;
-                    break;
-                }
-            }
-        }
-
-        if (found_prefix)
-        {
-            meta_dir_node *insert_base;
-            prefix_to_node_map::iterator np = ptnm.find(test_prefix);
-            if (np == ptnm.end())
-            {
-                smart_dir_node sdn = video_root->addSubDir(test_prefix,
-                        path_to_node_name(test_prefix), (*p)->GetHost(),
-                        (*p)->GetPrefix());
-                insert_base = sdn.get();
-                insert_base->setPathRoot();
-
-                ptnm.insert(prefix_to_node_map::value_type(test_prefix,
-                                                           insert_base));
-            }
-            else
-            {
-                insert_base = np->second;
-            }
-
-            (*p)->SetPrefix(test_prefix);
-            insert_hint = AddMetadataToDir(*p, insert_base, insert_hint);
-        }
-        else if (!found_prefix && ((*p)->IsHostSet()))
-        {
-            AddMetadataToDir(*p, sg_prefix_root.get());
-        }
-        else
-        {
-            AddMetadataToDir(*p, unknown_prefix_root.get());
-        }
-    }
-
-    if (!sg_prefix_root->empty())
-    {
-        video_root->addSubDir(sg_prefix_root);
-    }
-
-    if (!unknown_prefix_root->empty())
-    {
-        video_root->addSubDir(unknown_prefix_root);
+        AddMetadataToDir(*p, video_root);
     }
 
 //    print_dir_tree(m_metadata_tree); // AEW DEBUG
@@ -1052,10 +1018,6 @@ void VideoListImp::buildFsysList()
     //
     //  Fill metadata from directory structure
     //
-
-    // if available, start a UPnP MediaServer update first
-    if (UPNPScanner::Instance())
-        UPNPScanner::Instance()->StartFullScan();
 
     typedef std::vector<std::pair<QString, QString> > node_to_path_list;
 
@@ -1079,37 +1041,6 @@ void VideoListImp::buildFsysList()
     }
 
     //
-    // See if there are removable media available, so we can add them
-    // to the tree.
-    //
-    MediaMonitor *mon = MediaMonitor::GetMediaMonitor();
-    if (mon)
-    {
-        QList <MythMediaDevice*> medias = mon->GetMedias(MEDIATYPE_DATA);
-
-        for (QList <MythMediaDevice*>::Iterator itr = medias.begin();
-             itr != medias.end(); ++itr)
-        {
-            MythMediaDevice *pDev = *itr;
-            if (mon->ValidateAndLock(pDev))
-            {
-                QString path = pDev->getMountPath();
-                if (path.length())
-                {
-                    LOG(VB_GENERAL, LOG_INFO,
-                        QString("Video: Adding MediaMonitor device: %1")
-                            .arg(path));
-                    node_paths.push_back(node_to_path_list::
-                                         value_type(path_to_node_name(path),
-                                                    path));
-                }
-
-                mon->Unlock(pDev);
-            }
-        }
-    }
-
-    //
     // Add all root-nodes to the tree.
     //
     metadata_list ml;
@@ -1124,7 +1055,7 @@ void VideoListImp::buildFsysList()
 
     // retrieve any MediaServer data that may be available
     if (UPNPScanner::Instance())
-        UPNPScanner::Instance()->GetMetadata(&ml, &m_metadata_tree);
+        UPNPScanner::Instance()->GetInitialMetadata(&ml, &m_metadata_tree);
 
     // See if we can find this filename in DB
     if (m_LoadMetaData)
@@ -1168,7 +1099,8 @@ static void copy_filtered_tree(meta_dir_node &dst, meta_dir_node &src,
         smart_dir_node sdn = dst.addSubDir((*dir)->getPath(),
                                            (*dir)->getName(),
                                            (*dir)->GetHost(),
-                                           (*dir)->GetPrefix());
+                                           (*dir)->GetPrefix(),
+                                           (*dir)->GetData());
         copy_filtered_tree(*sdn, *(dir->get()), filter);
     }
 }

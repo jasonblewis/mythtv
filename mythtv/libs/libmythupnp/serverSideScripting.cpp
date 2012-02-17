@@ -6,21 +6,11 @@
 //                                                                            
 // Copyright (c) 2011 David Blain <dblain@mythtv.org>
 //                                          
-// This library is free software; you can redistribute it and/or 
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or at your option any later version of the LGPL.
-//
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library.  If not, see <http://www.gnu.org/licenses/>.
+// Licensed under the GPL v2 or later, see COPYING for details                    
 //
 //////////////////////////////////////////////////////////////////////////////
 
+#include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
 
@@ -276,7 +266,7 @@ bool ServerSideScripting::ProcessLine( QTextStream &sCode,
 
         sTransBuffer.append(sLine.left(nEndTransPos).trimmed());
         QString trStr =
-            QObject::tr(sTransBuffer.trimmed().toLocal8Bit().data());
+            QCoreApplication::translate("HtmlUI", sTransBuffer.trimmed().toLocal8Bit().data());
         trStr.replace( '"', "\\\"" );
         sCode << "os.write( \"" << trStr << "\" );\n";
         sTransBuffer = "";
@@ -296,7 +286,7 @@ bool ServerSideScripting::ProcessLine( QTextStream &sCode,
             QString patStr = sLine.mid(nStartTransPos,
                                        (nEndTransPos + 7 - nStartTransPos));
             QString repStr = patStr.mid(6, patStr.length() - 13).trimmed();
-            sLine.replace(patStr, QObject::tr(repStr.toLocal8Bit().data()));
+            sLine.replace(patStr, QCoreApplication::translate("HtmlUI", repStr.toLocal8Bit().data()));
             return ProcessLine(sCode, sLine, bInCode, sTransBuffer);
         }
         else

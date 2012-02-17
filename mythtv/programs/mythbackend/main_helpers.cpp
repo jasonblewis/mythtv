@@ -288,7 +288,7 @@ int handle_command(const MythBackendCommandLineParser &cmdline)
     {
         if (gCoreContext->ConnectToMasterServer())
         {
-            RemoteSendMessage(eventString);
+            gCoreContext->SendMessage(eventString);
             return GENERIC_EXIT_OK;
         }
         return GENERIC_EXIT_NO_MYTHCONTEXT;
@@ -301,7 +301,7 @@ int handle_command(const MythBackendCommandLineParser &cmdline)
             QString message = "SET_VERBOSE ";
             message += cmdline.toString("setverbose");
 
-            RemoteSendMessage(message);
+            gCoreContext->SendMessage(message);
             LOG(VB_GENERAL, LOG_INFO,
                 QString("Sent '%1' message").arg(message));
             return GENERIC_EXIT_OK;
@@ -321,7 +321,7 @@ int handle_command(const MythBackendCommandLineParser &cmdline)
             QString message = "SET_LOG_LEVEL ";
             message += cmdline.toString("setloglevel");
 
-            RemoteSendMessage(message);
+            gCoreContext->SendMessage(message);
             LOG(VB_GENERAL, LOG_INFO,
                 QString("Sent '%1' message").arg(message));
             return GENERIC_EXIT_OK;
@@ -338,7 +338,7 @@ int handle_command(const MythBackendCommandLineParser &cmdline)
     {
         if (gCoreContext->ConnectToMasterServer())
         {
-            RemoteSendMessage("CLEAR_SETTINGS_CACHE");
+            gCoreContext->SendMessage("CLEAR_SETTINGS_CACHE");
             LOG(VB_GENERAL, LOG_INFO, "Sent CLEAR_SETTINGS_CACHE message");
             return GENERIC_EXIT_OK;
         }
@@ -365,6 +365,7 @@ int handle_command(const MythBackendCommandLineParser &cmdline)
             cout << "Calculating Schedule from database.\n" <<
                     "Inputs, Card IDs, and Conflict info may be invalid "
                     "if you have multiple tuners.\n";
+            ProgramInfo::CheckProgramIDAuthorities();
             sched->FillRecordListFromDB();
         }
 
@@ -538,9 +539,9 @@ int run_backend(MythBackendCommandLineParser &cmdline)
             return ret;
     }
 
-    QString myip = gCoreContext->GetSetting("BackendServerIP");
     int     port = gCoreContext->GetNumSetting("BackendServerPort", 6543);
-    if (myip.isEmpty())
+    if (gCoreContext->GetSetting("BackendServerIP").isEmpty() &&
+        gCoreContext->GetSetting("BackendServerIP6").isEmpty())
     {
         cerr << "No setting found for this machine's BackendServerIP.\n"
              << "Please run setup on this machine and modify the first page\n"
@@ -646,7 +647,7 @@ int run_backend(MythBackendCommandLineParser &cmdline)
     StorageGroup::CheckAllStorageGroupDirs();
 
     if (gCoreContext->IsMasterBackend())
-        SendMythSystemEvent("MASTER_STARTED");
+        gCoreContext->SendSystemEvent("MASTER_STARTED");
 
     ///////////////////////////////
     ///////////////////////////////
@@ -656,7 +657,7 @@ int run_backend(MythBackendCommandLineParser &cmdline)
 
     if (gCoreContext->IsMasterBackend())
     {
-        SendMythSystemEvent("MASTER_SHUTDOWN");
+        gCoreContext->SendSystemEvent("MASTER_SHUTDOWN");
         qApp->processEvents();
     }
 

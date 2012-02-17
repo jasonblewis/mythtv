@@ -6,18 +6,7 @@
 //                                                                            
 // Copyright (c) 2011 David Blain <dblain@mythtv.org>
 //                                          
-// This library is free software; you can redistribute it and/or 
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or at your option any later version of the LGPL.
-//
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library.  If not, see <http://www.gnu.org/licenses/>.
+// Licensed under the GPL v2 or later, see COPYING for details                    
 //
 //////////////////////////////////////////////////////////////////////////////
 
@@ -32,8 +21,10 @@
 //
 /////////////////////////////////////////////////////////////////////////////
 
-HtmlServerExtension::HtmlServerExtension( const QString sSharePath)
-  : HttpServerExtension( "Html" , sSharePath)
+HtmlServerExtension::HtmlServerExtension( const QString sSharePath,
+                                          const QString sApplicationPrefix)
+  : HttpServerExtension( "Html" , sSharePath),
+    m_IndexFilename(sApplicationPrefix + "index")
 {
     // Cache the absolute path for the share directory.
 
@@ -77,12 +68,12 @@ bool HtmlServerExtension::ProcessRequest( HTTPRequest *pRequest )
 
         if (oInfo.isDir())
         {
-            QString sIndexFileName = oInfo.filePath() + "index.qsp";
+            QString sIndexFileName = oInfo.filePath() + m_IndexFilename + ".qsp";
 
             if (QFile::exists( sIndexFileName ))
                 oInfo.setFile( sIndexFileName );
             else 
-                oInfo.setFile( oInfo.filePath() + "index.html" );
+                oInfo.setFile( oInfo.filePath() + m_IndexFilename + ".html" );
         }
 
         if (oInfo.exists() == true )

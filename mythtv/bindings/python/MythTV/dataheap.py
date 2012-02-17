@@ -17,6 +17,57 @@ import locale
 import xml.etree.cElementTree as etree
 from datetime import date, time
 
+class Artwork( unicode ):
+    _types = {'coverart':   'Coverart',
+              'coverfile':  'Coverart',
+              'fanart':     'Fanart',
+              'banner':     'Banners',
+              'screenshot': 'ScreenShots',
+              'trailer':    'Trailers'}
+    def __new__(self, attr, parent=None, imagetype=None):
+        s = u''
+        if parent and (parent[attr] is not None):
+            s = parent[attr]
+        return super(Artwork, self).__new__(self, s)
+
+    def __init__(self, attr, parent=None, imagetype=None):
+        self.attr = attr
+        if imagetype is None:
+            imagetype = self._types[attr]
+        self.imagetype = imagetype
+        self.parent = parent
+
+        if parent:
+            self.hostname = parent.get('hostname', parent.get('host', None))
+        super(Artwork, self).__init__()
+
+    def __repr__(self):
+        return u"<{0.imagetype} '{0}'>".format(self)
+
+    def __get__(self, inst, owner):
+        if inst is None:
+            return self
+        return Artwork(self.attr, inst, self.imagetype)
+
+    def __set__(self, inst, value):
+        super(Artwork, self).__set__(inst, value)
+        self.parent[self.attr] = value
+
+    @property
+    def exists(self):
+        be = FileOps(self.hostname, db = self.parent._db)
+        return be.fileExists(self, self.imagetype)
+
+    def downloadFrom(self, url):
+        if self.parent is None:
+            raise RuntimeError("Artwork.downloadFrom must be called from "+\
+                               "object, not class.")
+        be = FileOps(self.hostname, db=self.parent._db)
+        be.downloadTo(url, self.imagetype, self)
+
+    def open(self, mode='r'):
+        return ftopen('myth://{0.imagetype}@{0.hostname}/{0}'.format(self), mode)
+
 class Record( CMPRecord, DBDataWrite, RECTYPE ):
     """
     Record(id=None, db=None) -> Record object
@@ -28,6 +79,7 @@ class Record( CMPRecord, DBDataWrite, RECTYPE ):
                  'inetref':'',       'next_record':datetime(1900,1,1),
                  'season':0,         'last_delete':datetime(1900,1,1),
                  'episode':0}
+    _artwork = None
 
     def __str__(self):
         if self._wheredat is None:
@@ -59,6 +111,24 @@ class Record( CMPRecord, DBDataWrite, RECTYPE ):
             recstatus=Program.rsWillRecord
         return FileOps(db=self._db)._getSortedPrograms('QUERY_GETALLPENDING',
                     header=1, recordid=self.recordid, recstatus=recstatus)
+
+    @property
+    def artwork(self):
+        if self._artwork is None:
+            if (self.inetref is None) or (self.inetref == ""):
+                raise MythError("Record cannot have artwork without inetref")
+
+            try:
+                self._artwork = \
+                    RecordedArtwork((self.inetref, self.season), self._db)
+            except MythError:
+                #artwork does not exist, create new
+                self._artwork = RecordedArtwork(db=self._db)
+                self._artwork.inetref = self.inetref
+                self._artwork.season = self.season
+                self._artwork.host = self._db.getMasterBackend()
+                self._artwork.create()
+        return self._artwork
 
     @classmethod
     def fromGuide(cls, guide, type=RECTYPE.kAllRecord, wait=False):
@@ -146,6 +216,7 @@ class Recorded( CMPRecord, DBDataWrite ):
                  'profile':'No',     'duplicate':1,          'transcoded':0,
                  'watched':0,        'storagegroup':'Default',
                  'inetref':'',       'season':0,            'episode':0}
+    _artwork = None
 
     class _Cast( DBDataCRef ):
         _table = ['recordedcredits','people']
@@ -237,6 +308,25 @@ class Recorded( CMPRecord, DBDataWrite ):
         """Recorded.getRecordedProgram() -> RecordedProgram object"""
         return RecordedProgram.fromRecorded(self)
 
+    @property
+    def artwork(self):
+        if self._artwork is None:
+            if (self.inetref is None) or (self.inetref == ""):
+                raise MythError("Recorded cannot have artwork without inetref")
+
+            try:
+                self._artwork = \
+                    RecordedArtwork((self.inetref, self.season), self._db)
+            except MythError:
+                #artwork does not exist, create new
+                self._artwork = RecordedArtwork(db=self._db)
+                self._artwork.inetref = self.inetref
+                self._artwork.season = self.season
+                self._artwork.host = self._db.getMasterBackend()
+                self._artwork.create()
+        return self._artwork
+
+
     def formatPath(self, path, replace=None):
         """
         Recorded.formatPath(path, replace=None) -> formatted path string
@@ -288,9 +378,10 @@ class Recorded( CMPRecord, DBDataWrite ):
             return
 
         # pull direct matches
-        for tag in ('title', 'subtitle', 'description', 'chanid', 
-                    'starttime', 'recgroup', 'playgroup', 'seriesid',
-                    'programid', 'storagegroup'):
+        for tag in ('title', 'subtitle', 'description', 'season', 'episode',
+                    'chanid', 'starttime', 'seriesid', 'programid', 'inetref',
+                    'recgroup', 'playgroup', 'seriesid', 'programid',
+                    'storagegroup'):
             if metadata[tag] and _allow_change(self, tag, overwrite):
                 self[tag] = metadata[tag]
 
@@ -309,16 +400,13 @@ class Recorded( CMPRecord, DBDataWrite ):
                                         cast.job.lower().replace(' ','_'))))
 
         # pull images
-        exists = {'coverart':False,     'fanart':False,
-                  'banner':False,       'screenshot':False}
-        be = FileOps(self.hostname, db=self._db)
         for image in metadata.images:
-            if exists[image.type]:
+            if not hasattr(self.artwork, image.type):
+                pass
+            if getattr(self.artwork, image.type, ''):
                 continue
-            group = Video._getGroup(self.hostname, image.type, self._db)
-            if not be.fileExists(image.filename, group):
-                be.downloadTo(image.url, group, image.filename)
-            exists[image.type] = True
+            setattr(self.artwork, image.type, image.filename)
+            getattr(self.artwork, image.type).downloadFrom(image.url)
 
         self.update()
 
@@ -330,7 +418,8 @@ class Recorded( CMPRecord, DBDataWrite ):
         metadata = VideoMetadata()
 
         # pull direct matches
-        for tag in ('title', 'subtitle', 'description', 'chanid', 
+        for tag in ('title', 'subtitle', 'description', 'season', 'episode',
+                    'chanid', 'starttime', 'seriesid', 'programid', 'inetref',
                     'recgroup', 'playgroup', 'seriesid', 'programid',
                     'storagegroup'):
             if self[tag]:
@@ -349,6 +438,11 @@ class Recorded( CMPRecord, DBDataWrite ):
             role = ' '.join([word.capitalize() for word in member.role.split('_')])
             if role=='Writer': role = 'Author'
             metadata.people.append({'name':name, 'job':role})
+
+        for arttype in ['coverart', 'fanart', 'banner']:
+            art = getattr(self.artwork, arttype)
+            if art:
+                metadata.images.append({'type':arttype, 'filename':art})
 
         return metadata
 
@@ -469,18 +563,22 @@ class RecordedArtwork( DBDataWrite ):
     """
     RecordedArtwork(data=None, db=None)
     """
-    _key = ('inetref', 'season', 'host')
+    _key = ('inetref', 'season')
     _defaults = {'inetref':'',      'season':0,     'host':'',
                  'coverart':'',     'fanart':'',    'banner':''}
 
     def __str__(self):
         if self._wheredat is None:
             return u"<Uninitialized Artwork at %s>" % hex(id(self))
-        return u"<Channel '%s','%d' at %s>" % \
+        return u"<RecordedArtwork '%s','%d' at %s>" % \
                         (self.inetref, self.season, hex(id(self)))
 
     def __repr__(self):
         return str(self).encode('utf-8')
+
+    coverart = Artwork('coverart')
+    fanart   = Artwork('fanart')
+    banner   = Artwork('banner')
 
 class Job( DBDataWrite, JOBTYPE, JOBCMD, JOBFLAG, JOBSTATUS ):
     """
@@ -658,61 +756,11 @@ class Video( CMPVideo, VideoSchema, DBDataWrite ):
                  'releasedate':date(1,1,1),  'childid':-1}
     _cm_toid, _cm_toname = DictInvertCI.createPair({0:'none'})
 
-    class _open(object):
-        def __init__(self, func):
-            self.__name__ = func.__name__
-            self.__module__ = func.__module__
-            self.__doc__ = """Video.%s(mode='r', nooverwrite=False)
-                        -> file or FileTransfer object""" % self.__name__
-            self.type, self.sgroup = \
-                        {'':('filename','Videos'),
-                         'Banner':('banner','Banners'),
-                         'Coverart':('coverfile','Coverart'),
-                         'Fanart':('fanart','Fanart'),
-                         'Screenshot':('screenshot','Screenshots'),
-                         'Trailer':('trailer','Trailers')}[self.__name__[4:]]
-        def __get__(self, inst, own):
-            self.inst = inst
-            return self
-
-        def __call__(self, mode='r', nooverwrite=False):
-            if self.inst.host == '':
-                raise MythFileError('File access only works '
-                                    'with Storage Group content')
-            return ftopen('myth://%s@%s/%s' % ( self.sgroup,
-                                                self.inst.host,
-                                                self.inst[self.type]),
-                                    mode, False, nooverwrite, self.inst._db)
-
     @classmethod
     def _setClassDefs(cls, db=None):
         db = DBCache(db)
         super(Video, cls)._setClassDefs(db)
         cls._fill_cm(db)
-
-    @classmethod
-    def _getGroup(cls, host, groupname=None, db=None):
-        db = DBCache(db)
-        metadata = ['coverart','fanart','banner','screenshot']
-        fields = ['coverfile','fanart','banner','screenshot']
-        groups = ['Coverart','Fanart','Banners','Screenshots']
-
-        if (groupname is None) or (groupname == 'Videos'):
-            if len(list(db.getStorageGroup('Videos', host))) == 0:
-                raise MythError('MythVideo not set up for this host.')
-            else:
-                return 'Videos'
-        elif groupname in groups:
-            if len(list(db.getStorageGroup(groupname, host))) == 0:
-                return cls._getGroup(host, 'Videos', db)
-            else:
-                return groupname
-        elif groupname in fields:
-            return cls._getGroup(host, groups[fields.index(groupname)])
-        elif groupname in metadata:
-            return cls._getGroup(host, groups[metadata.index(groupname)])
-        else:
-            raise MythError('Invalid Video StorageGroup name.')
 
     @classmethod
     def _fill_cm(cls, db=None):
@@ -770,9 +818,6 @@ class Video( CMPVideo, VideoSchema, DBDataWrite ):
         self.country.commit()
 
     def __repr__(self):
-        return str(self).encode('utf-8')
-
-    def __str__(self):
         if self._wheredat is None:
             return u"<Uninitialized Video at %s>" % hex(id(self))
         res = self.title
@@ -838,18 +883,15 @@ class Video( CMPVideo, VideoSchema, DBDataWrite ):
         self.country.clean()
         DBDataWrite.delete(self)
 
-    @_open
-    def open(self,mode='r',nooverwrite=False): pass
-    @_open
-    def openBanner(self,mode='r',nooverwrite=False): pass
-    @_open
-    def openCoverart(self,mode='r',nooverwrite=False): pass
-    @_open
-    def openFanart(self,mode='r',nooverwrite=False): pass
-    @_open
-    def openScreenshot(self,mode='r',nooverwrite=False): pass
-    @_open
-    def openTrailer(self,mode='r',nooverwrite=False): pass
+    banner               = Artwork('banner')
+    coverfile = coverart = Artwork('coverfile')
+    fanart               = Artwork('fanart')
+    screenshot           = Artwork('screenshot')
+    trailer              = Artwork('trailer')
+
+    def open(self, mode='r', nooverwrite=False):
+        return ftopen('myth://Videos@{0.host}/{0.filename}'.format(self),
+                    mode, False, nooverwrite, self._db)
 
     def getHash(self):
         """Video.getHash() -> file hash"""
@@ -946,23 +988,13 @@ class Video( CMPVideo, VideoSchema, DBDataWrite ):
 
         # pull images (SG content only)
         if bool(self.host):
-            # only perform image grabs if 'host' is set, denoting SG use
-            t1 = ['coverart','fanart','banner','screenshot']
-            t2 = ['coverfile','fanart','banner','screenshot']
-            mdtype = dict(zip(t1,t2))
-            exists = dict(zip(t1,[False,False,False,False]))
-
-            be = FileOps(self.host, db=self._db)
             for image in metadata.images:
-                if exists[image.type]:
+                if not hasattr(self, image.type):
                     continue
-                if not _allow_change(self, mdtype[image.type], overwrite):
+                if getattr(self, image.type) and not overwrite:
                     continue
-                self[mdtype[image.type]] = image.filename
-                group = self._getGroup(self.host, image.type, self._db)
-                if not be.fileExists(image.filename, group):
-                    be.downloadTo(image.url, group, image.filename)
-                exists[image.type] = True
+                setattr(self, image.type, image.filename)
+                getattr(self, image.type).downloadFrom(image.url)
 
         self.processed = True
         self.update()
@@ -1002,12 +1034,10 @@ class Video( CMPVideo, VideoSchema, DBDataWrite ):
             metadata.countries.append(country.country)
 
         # pull images
-        t1 = ['coverart', 'fanart', 'banner', 'screenshot']
-        t2 = ['coverfile', 'fanart', 'banner', 'screenshot']
-        mdtype = dict(zip(t2,t1))
-        for type in t2:
-            if self[type]:
-                metadata.images.append({'type':mdtype[type], 'filname':self[type]})
+        for arttype in ['coverart', 'fanart', 'banner', 'screenshot']:
+            art = getattr(self, arttype)
+            if art:
+                metadata.images.append({'type':arttype, 'filename':art})
 
         return metadata
 
@@ -1039,6 +1069,20 @@ class Video( CMPVideo, VideoSchema, DBDataWrite ):
         return fe.send('play','file myth://Videos@%s/%s' % 
                     (self.host, self.filename))
 
+    #### LEGACY ####
+    # of course this will likely all get scrapped for 0.26...
+    def openBanner(self, mode='r', nooverwrite=False):
+        return self.banner.open(mode)
+    def openCoverart(self, mode='r', nooverwrite=False):
+        return self.coverfile.open(mode)
+    def openFanart(self, mode='r', nooverwrite=False):
+        return self.fanart.open(mode)
+    def openScreenshot(self, mode='r', nooverwrite=False):
+        return self.screenshot.open(mode)
+    def openTrailer(self, mode='r', nooverwrite=False):
+        return self.trailer.open(mode)
+
+
 class VideoGrabber( Grabber ):
     """
     VideoGrabber(mode, lang='en', db=None) -> VideoGrabber object
@@ -1049,12 +1093,13 @@ class VideoGrabber( Grabber ):
 
     def __init__(self, mode, lang='en', db=None):
         dbvalue = {'tv':'TelevisionGrabber', 'movie':'MovieGrabber'}
-        path = {'tv':'Television/ttvdb.py', 'movie':'Movie/tmdb.py'}
+        path = {'tv':'metadata/Television/ttvdb.py',
+                'movie':'metadata/Movie/tmdb.py'}
         self.mode = mode.lower()
         try:
             Grabber.__init__(self, setting=dbvalue[self.mode], db=db,
-                path=os.path.join(INSTALL_PREFIX, 'share/mythtv/metadata', 
-                                  path[self.mode]))
+                        path=path[self.mode],
+                        prefix=os.path.join(INSTALL_PREFIX, 'share/mythtv'))
         except KeyError:
             raise MythError('Invalid MythVideo grabber')
         self.append('-l',lang)

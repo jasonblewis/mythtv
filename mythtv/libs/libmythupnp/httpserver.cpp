@@ -5,20 +5,9 @@
 // Purpose     : HTTP 1.1 Mini Server Implmenetation
 //               Used for UPnp/AV implementation & status information
 //                                                                            
-// Copyright (c) 2005 David Blain <mythtv@theblains.net>
+// Copyright (c) 2005 David Blain <dblain@mythtv.org>
 //                                          
-// This library is free software; you can redistribute it and/or 
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or at your option any later version of the LGPL.
-//
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library.  If not, see <http://www.gnu.org/licenses/>.
+// Licensed under the GPL v2 or later, see COPYING for details                    
 //
 //////////////////////////////////////////////////////////////////////////////
 
@@ -58,9 +47,9 @@ QString  HttpServer::s_platform;
 //
 /////////////////////////////////////////////////////////////////////////////
 
-HttpServer::HttpServer() :
-    QTcpServer(), m_sSharePath(GetShareDir()),
-    m_pHtmlServer(new HtmlServerExtension(m_sSharePath)),
+HttpServer::HttpServer(const QString sApplicationPrefix) :
+    ServerPool(), m_sSharePath(GetShareDir()),
+    m_pHtmlServer(new HtmlServerExtension(m_sSharePath, sApplicationPrefix)),
     m_threadPool("HttpServerPool"), m_running(true)
 {
     setMaxPendingConnections(20);
@@ -133,7 +122,7 @@ QScriptEngine* HttpServer::ScriptEngine()
 //
 /////////////////////////////////////////////////////////////////////////////
 
-void HttpServer::incomingConnection(int nSocket)
+void HttpServer::newTcpConnection(int nSocket)
 {
     m_threadPool.startReserved(
         new HttpWorker(*this, nSocket),

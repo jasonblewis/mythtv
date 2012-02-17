@@ -242,6 +242,36 @@ MetadataLookupList MetadataDownload::runGrabber(QString cmd, QStringList args,
     return list;
 }
 
+QString MetadataDownload::GetMovieGrabber()
+{
+    QString def_cmd = "metadata/Movie/tmdb.py";
+    QString db_cmd = gCoreContext->GetSetting("MovieGrabber", def_cmd);
+
+    return QDir::cleanPath(QString("%1/%2")
+            .arg(GetShareDir())
+            .arg(db_cmd));
+}
+
+QString MetadataDownload::GetTelevisionGrabber()
+{
+    QString def_cmd = "metadata/Television/ttvdb.py";
+    QString db_cmd = gCoreContext->GetSetting("TelevisionGrabber", def_cmd);
+
+    return QDir::cleanPath(QString("%1/%2")
+            .arg(GetShareDir())
+            .arg(db_cmd));
+}
+
+QString MetadataDownload::GetGameGrabber()
+{
+    QString def_cmd = "metadata/Game/giantbomb.py";
+    QString db_cmd = gCoreContext->GetSetting("mythgame.MetadataGrabber", def_cmd);
+
+    return QDir::cleanPath(QString("%1/%2")
+            .arg(GetShareDir())
+            .arg(db_cmd));
+}
+
 bool MetadataDownload::runGrabberTest(const QString &grabberpath)
 {
     QStringList args;
@@ -260,40 +290,26 @@ bool MetadataDownload::runGrabberTest(const QString &grabberpath)
 
 bool MetadataDownload::MovieGrabberWorks()
 {
-    bool ret = false;
-
-    QString def_cmd = QDir::cleanPath(QString("%1/%2")
-        .arg(GetShareDir())
-        .arg("metadata/Movie/tmdb.py"));
-
-    QString cmd = gCoreContext->GetSetting("MovieGrabber", def_cmd);
-
-    ret = runGrabberTest(cmd);
-
-    if (!ret)
+    if (!runGrabberTest(GetMovieGrabber()))
+    {
         LOG(VB_GENERAL, LOG_INFO,
             QString("Movie grabber not functional.  Aborting this run."));
+        return false;
+    }
 
-    return ret;
+    return true;
 }
 
 bool MetadataDownload::TelevisionGrabberWorks()
 {
-    bool ret = false;
-
-    QString def_cmd = QDir::cleanPath(QString("%1/%2")
-        .arg(GetShareDir())
-        .arg("metadata/Television/ttvdb.py"));
-
-    QString cmd = gCoreContext->GetSetting("TelevisionGrabber", def_cmd);
-
-    ret = runGrabberTest(cmd);
-
-    if (!ret)
+    if (!runGrabberTest(GetTelevisionGrabber()))
+    {
         LOG(VB_GENERAL, LOG_INFO,
             QString("Television grabber not functional.  Aborting this run."));
+        return false;
+    }
 
-    return ret;
+    return true;
 }
 
 MetadataLookupList MetadataDownload::readMXML(QString MXMLpath,
@@ -429,11 +445,7 @@ MetadataLookupList MetadataDownload::handleGame(MetadataLookup* lookup)
 {
     MetadataLookupList list;
 
-    QString def_cmd = QDir::cleanPath(QString("%1/%2")
-        .arg(GetShareDir())
-        .arg("metadata/Game/giantbomb.py"));
-
-    QString cmd = gCoreContext->GetSetting("mythgame.MetadataGrabber", def_cmd);
+    QString cmd = GetGameGrabber();
 
     QStringList args;
     args.append(QString("-l")); // Language Flag
@@ -477,11 +489,7 @@ MetadataLookupList MetadataDownload::handleMovie(MetadataLookup* lookup)
 
     if (mxml.isEmpty() && nfo.isEmpty())
     {
-        QString def_cmd = QDir::cleanPath(QString("%1/%2")
-            .arg(GetShareDir())
-            .arg("metadata/Movie/tmdb.py"));
-
-        QString cmd = gCoreContext->GetSetting("MovieGrabber", def_cmd);
+        QString cmd = GetMovieGrabber();
 
         QStringList args;
         args.append(QString("-l")); // Language Flag
@@ -519,11 +527,7 @@ MetadataLookupList MetadataDownload::handleTelevision(MetadataLookup* lookup)
 {
     MetadataLookupList list;
 
-    QString def_cmd = QDir::cleanPath(QString("%1/%2")
-        .arg(GetShareDir())
-        .arg("metadata/Television/ttvdb.py"));
-
-    QString cmd = gCoreContext->GetSetting("TelevisionGrabber", def_cmd);
+    QString cmd = GetTelevisionGrabber();
 
     QStringList args;
     args.append(QString("-l")); // Language Flag
@@ -567,11 +571,7 @@ MetadataLookupList MetadataDownload::handleVideoUndetermined(
 {
     MetadataLookupList list;
 
-    QString def_cmd = QDir::cleanPath(QString("%1/%2")
-        .arg(GetShareDir())
-        .arg("metadata/Television/ttvdb.py"));
-
-    QString cmd = gCoreContext->GetSetting("TelevisionGrabber", def_cmd);
+    QString cmd = GetTelevisionGrabber();
 
     // Can't trust the inetref with so little information.
 
@@ -611,11 +611,7 @@ MetadataLookupList MetadataDownload::handleRecordingGeneric(
 
     MetadataLookupList list;
 
-    QString def_cmd = QDir::cleanPath(QString("%1/%2")
-            .arg(GetShareDir())
-            .arg("metadata/Television/ttvdb.py"));
-
-    QString cmd = gCoreContext->GetSetting("TelevisionGrabber", def_cmd);
+    QString cmd = GetTelevisionGrabber();
 
     QStringList args;
 
@@ -624,9 +620,11 @@ MetadataLookupList MetadataDownload::handleRecordingGeneric(
     args.append("-M");
     QString title = lookup->GetTitle();
     args.append(title);
-    lookup->SetSubtype(kProbableGenericTelevision);
+    LookupType origtype = lookup->GetSubtype();
     int origseason = lookup->GetSeason();
     int origepisode = lookup->GetEpisode();
+
+    lookup->SetSubtype(kProbableTelevision);
 
     if (origseason == 0 && origepisode == 0)
     {
@@ -637,10 +635,14 @@ MetadataLookupList MetadataDownload::handleRecordingGeneric(
     list = runGrabber(cmd, args, lookup, true);
 
     if (list.count() == 1)
-        list.at(0)->SetStep(kLookupData);
+    {
+        lookup->SetInetref(list.at(0)->GetInetref());
+        list = handleTelevision(lookup);
+    }
 
     lookup->SetSeason(origseason);
     lookup->SetEpisode(origepisode);
+    lookup->SetSubtype(origtype);
 
     return list;
 }
@@ -657,8 +659,7 @@ QString MetadataDownload::getMXMLPath(QString filename)
     if (xmlname.startsWith("myth://"))
     {
         if (qurl.host().toLower() != gCoreContext->GetHostName().toLower() &&
-            (qurl.host() != gCoreContext->GetSettingOnHost("BackendServerIP",
-                                               gCoreContext->GetHostName())))
+            (!gCoreContext->IsThisHost(qurl.host())))
         {
             if (RemoteFile::Exists(xmlname))
                 ret = xmlname;
@@ -692,8 +693,7 @@ QString MetadataDownload::getNFOPath(QString filename)
     if (nfoname.startsWith("myth://"))
     {
         if (qurl.host().toLower() != gCoreContext->GetHostName().toLower() &&
-            (qurl.host() != gCoreContext->GetSettingOnHost("BackendServerIP",
-                                               gCoreContext->GetHostName())))
+            (!gCoreContext->IsThisHost(qurl.host())))
         {
             if (RemoteFile::Exists(nfoname))
                 ret = nfoname;

@@ -49,9 +49,9 @@ void MythUIButtonTree::Init()
 
     if (!m_listTemplate)
     {
-        LOG(VB_GENERAL, LOG_ERR, QString("MythUIButtonList listtemplate is "
-                                         "required in mythuibuttonlist: %1")
-            .arg(objectName()));
+        LOG(VB_GENERAL, LOG_ERR, QString("(%1) MythUIButtonList listtemplate "
+                                         "is required in mythuibuttonlist: %2")
+            .arg(GetXMLLocation().arg(objectName())));
         return;
     }
 
@@ -138,8 +138,8 @@ void MythUIButtonTree::SetTreeState(bool refreshAll)
         {
             m_activeList = list;
             list->SetActive(true);
-            emit itemSelected(list->GetItemCurrent());
             DoSetCurrentNode(selectedNode);
+            emit itemSelected(list->GetItemCurrent());
         }
 
         listid++;
@@ -236,6 +236,7 @@ bool MythUIButtonTree::AssignTree(MythGenericTree *tree)
     // as though the parent nodes do not exist
     m_depthOffset = m_rootNode->currentDepth();
     SetTreeState(true);
+    emit rootChanged(m_rootNode);
 
     return true;
 }
@@ -253,6 +254,7 @@ void MythUIButtonTree::Reset(void)
     m_active = true;
 
     SetTreeState(true);
+    emit rootChanged(m_rootNode);
 
     MythUIType::Reset();
 }
@@ -363,6 +365,12 @@ bool MythUIButtonTree::SetCurrentNode(MythGenericTree *node)
     QStringList route = node->getRouteByString();
 
     return SetNodeByString(route);
+}
+
+void MythUIButtonTree::ShowSearchDialog(void)
+{
+    if (m_activeList)
+        m_activeList->ShowSearchDialog();
 }
 
 bool MythUIButtonTree::DoSetCurrentNode(MythGenericTree *node)

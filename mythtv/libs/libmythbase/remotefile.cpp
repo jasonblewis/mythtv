@@ -90,6 +90,16 @@ MythSocket *RemoteFile::openSocket(bool control)
 
     QStringList strlist;
 
+#ifndef IGNORE_PROTO_VER_MISMATCH
+    if (!gCoreContext->CheckProtoVersion(lsock))
+    {
+        LOG(VB_GENERAL, LOG_ERR, loc +
+            QString("Failed validation to server %1:%2").arg(host).arg(port));
+        lsock->DownRef();
+        return NULL;
+    }
+#endif
+
     if (control)
     {
         strlist.append(QString("ANN Playback %1 %2").arg(hostname).arg(false));
@@ -185,6 +195,37 @@ bool RemoteFile::Open(void)
     return true;
 }
 
+bool RemoteFile::ReOpen(QString newFilename)
+{
+    lock.lock();
+    if (!sock)
+    {
+        LOG(VB_NETWORK, LOG_ERR, "RemoteFile::ReOpen(): Called with no socket");
+        return false;
+    }
+
+    if (!sock->isOpen() || sock->error())
+        return false;
+
+    if (!controlSock->isOpen() || controlSock->error())
+        return false;
+
+    QStringList strlist( QString(query).arg(recordernum) );
+    strlist << "REOPEN";
+    strlist << newFilename;
+
+    controlSock->writeStringList(strlist);
+    controlSock->readStringList(strlist);
+
+    lock.unlock();
+
+    bool retval = false;
+    if (!strlist.empty())
+        retval = strlist[0].toInt();
+
+    return retval;
+}
+
 void RemoteFile::Close(void)
 {
     if (!controlSock)
@@ -250,7 +291,6 @@ bool RemoteFile::Exists(const QString &url)
 
 bool RemoteFile::Exists(const QString &url, struct stat *fileinfo)
 {
-    bool result      = false;
     QUrl qurl(url);
     QString filename = qurl.path();
     QString sgroup   = qurl.userName();
@@ -271,30 +311,31 @@ bool RemoteFile::Exists(const QString &url, struct stat *fileinfo)
 
     gCoreContext->SendReceiveStringList(strlist);
 
-    if (strlist[0] == "1")
+    bool result = false;
+    if ((strlist.size() >= 1) && strlist[0] == "1")
     {
-        result = true;
-        if (fileinfo)
+        if ((strlist.size() >= 15) && fileinfo)
         {
-            int pos = 2;
-            fileinfo->st_dev       = strlist[pos++].toLongLong();
-            fileinfo->st_ino       = strlist[pos++].toLongLong();
-            fileinfo->st_mode      = strlist[pos++].toLongLong();
-            fileinfo->st_nlink     = strlist[pos++].toLongLong();
-            fileinfo->st_uid       = strlist[pos++].toLongLong();
-            fileinfo->st_gid       = strlist[pos++].toLongLong();
-            fileinfo->st_rdev      = strlist[pos++].toLongLong();
-            fileinfo->st_size      = strlist[pos++].toLongLong();
-#ifdef USING_MINGW
-            pos++; // st_blksize
-            pos++; // st_blocks
-#else
-            fileinfo->st_blksize   = strlist[pos++].toLongLong();
-            fileinfo->st_blocks    = strlist[pos++].toLongLong();
+            fileinfo->st_dev       = strlist[2].toLongLong();
+            fileinfo->st_ino       = strlist[3].toLongLong();
+            fileinfo->st_mode      = strlist[4].toLongLong();
+            fileinfo->st_nlink     = strlist[5].toLongLong();
+            fileinfo->st_uid       = strlist[6].toLongLong();
+            fileinfo->st_gid       = strlist[7].toLongLong();
+            fileinfo->st_rdev      = strlist[8].toLongLong();
+            fileinfo->st_size      = strlist[9].toLongLong();
+#ifndef USING_MINGW
+            fileinfo->st_blksize   = strlist[10].toLongLong();
+            fileinfo->st_blocks    = strlist[11].toLongLong();
 #endif
-            fileinfo->st_atime     = strlist[pos++].toLongLong();
-            fileinfo->st_mtime     = strlist[pos++].toLongLong();
-            fileinfo->st_ctime     = strlist[pos++].toLongLong();
+            fileinfo->st_atime     = strlist[12].toLongLong();
+            fileinfo->st_mtime     = strlist[13].toLongLong();
+            fileinfo->st_ctime     = strlist[14].toLongLong();
+            result = true;
+        }
+        else if (!fileinfo)
+        {
+            result = true;
         }
     }
 
@@ -384,8 +425,12 @@ long long RemoteFile::Seek(long long pos, int whence, long long curpos)
     controlSock->readStringList(strlist);
     lock.unlock();
 
-    long long retval = strlist[0].toLongLong();
-    readposition = retval;
+    long long retval = -1;
+    if (!strlist.empty())
+    {
+        retval = strlist[0].toLongLong();
+        readposition = retval;
+    }
 
     Reset();
 

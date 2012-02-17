@@ -52,6 +52,7 @@ using namespace std;
 #include "lircevent.h"
 #include "mythudplistener.h"
 #include "mythrender_base.h"
+#include "mythuistatetracker.h"
 
 #ifdef USING_APPLEREMOTE
 #include "AppleRemoteListener.h"
@@ -60,6 +61,10 @@ using namespace std;
 #ifdef USE_JOYSTICK_MENU
 #include "jsmenu.h"
 #include "jsmenuevent.h"
+#endif
+
+#ifdef USING_LIBCEC
+#include "cecadapter.h"
 #endif
 
 #include "mythscreentype.h"
@@ -77,6 +82,7 @@ using namespace std;
 #endif
 
 #define GESTURE_TIMEOUT 1000
+#define STANDBY_TIMEOUT 90 // Minutes
 
 #define LOC      QString("MythMainWindow: ")
 
@@ -134,6 +140,11 @@ class MythMainWindowPrivate
         appleRemoteListener(NULL),
         appleRemote(NULL),
 #endif
+
+#ifdef USING_LIBCEC
+        cecAdapter(NULL),
+#endif
+
         exitingtomain(false),
         popwindows(false),
 
@@ -148,6 +159,7 @@ class MythMainWindowPrivate
 
         sysEventHandler(NULL),
 
+        drawInterval(1000 / 70),
         drawTimer(NULL),
         mainStack(NULL),
 
@@ -173,7 +185,10 @@ class MythMainWindowPrivate
 
         m_udpListener(NULL),
 
-        m_pendingUpdate(false)
+        m_pendingUpdate(false),
+
+        idleTimer(NULL),
+        standby(false)
     {
     }
 
@@ -202,6 +217,10 @@ class MythMainWindowPrivate
     AppleRemote         *appleRemote;
 #endif
 
+#ifdef USING_LIBCEC
+    CECAdapter* cecAdapter;
+#endif
+
     bool exitingtomain;
     bool popwindows;
 
@@ -221,6 +240,7 @@ class MythMainWindowPrivate
 
     QObject *sysEventHandler;
 
+    int drawInterval;
     MythSignalingTimer *drawTimer;
     QVector<MythScreenStack *> stackList;
     MythScreenStack *mainStack;
@@ -256,6 +276,9 @@ class MythMainWindowPrivate
     MythUDPListener *m_udpListener;
 
     bool m_pendingUpdate;
+
+    QTimer *idleTimer;
+    bool standby;
 };
 
 // Make keynum in QKeyEvent be equivalent to what's in QKeySequence
@@ -444,6 +467,15 @@ MythMainWindow::MythMainWindow(const bool useDB)
         d->appleRemote->start();
 #endif
 
+#ifdef USING_LIBCEC
+    d->cecAdapter = new CECAdapter();
+    if (!d->cecAdapter->IsValid())
+    {
+        delete d->cecAdapter;
+        d->cecAdapter = NULL;
+    }
+#endif
+
     d->m_udpListener = new MythUDPListener();
 
     InitKeys();
@@ -456,7 +488,7 @@ MythMainWindow::MythMainWindow(const bool useDB)
     connect(d->hideMouseTimer, SIGNAL(timeout()), SLOT(HideMouseTimeout()));
 
     d->drawTimer = new MythSignalingTimer(this, SLOT(animate()));
-    d->drawTimer->start(1000 / 70);
+    d->drawTimer->start(d->drawInterval);
 
     d->AllowInput = true;
 
@@ -467,6 +499,20 @@ MythMainWindow::MythMainWindow(const bool useDB)
     connect(this, SIGNAL(signalRemoteScreenShot(QString,int,int)),
             this, SLOT(doRemoteScreenShot(QString,int,int)),
             Qt::BlockingQueuedConnection);
+
+    // We need to listen for playback start/end events
+    gCoreContext->addListener(this);
+
+    int idletime = gCoreContext->GetNumSetting("FrontendIdleTimeout",
+                                               STANDBY_TIMEOUT);
+    if (idletime <= 0)
+        idletime = STANDBY_TIMEOUT;
+
+    d->idleTimer = new QTimer(this);
+    d->idleTimer->setSingleShot(true);
+    d->idleTimer->setInterval(1000 * 60 * idletime); // 30 minutes
+    connect(d->idleTimer, SIGNAL(timeout()), SLOT(IdleTimeout()));
+    d->idleTimer->start();
 }
 
 MythMainWindow::~MythMainWindow()
@@ -475,8 +521,13 @@ MythMainWindow::~MythMainWindow()
 
     while (!d->stackList.isEmpty())
     {
-        delete d->stackList.back();
+        MythScreenStack *stack = d->stackList.back();
         d->stackList.pop_back();
+
+        if (stack == d->mainStack)
+            d->mainStack = NULL;
+
+        delete stack;
     }
 
     delete d->m_themeBase;
@@ -517,6 +568,11 @@ MythMainWindow::~MythMainWindow()
         d->appleRemote->stopListening();
 
     delete d->appleRemoteListener;
+#endif
+
+#ifdef USING_LIBCEC
+    if (d->cecAdapter)
+        delete d->cecAdapter;
 #endif
 
     delete d;
@@ -603,16 +659,6 @@ MythScreenStack* MythMainWindow::GetStackAt(int pos)
         return d->stackList.at(pos);
 
     return NULL;
-}
-
-void MythMainWindow::RegisterSystemEventHandler(QObject *eventHandler)
-{
-    d->sysEventHandler = eventHandler;
-}
-
-QObject *MythMainWindow::GetSystemEventHandler(void)
-{
-    return d->sysEventHandler;
 }
 
 void MythMainWindow::animate(void)
@@ -957,13 +1003,11 @@ void MythMainWindow::Init(void)
 #endif
 #ifdef USE_OPENGL_PAINTER
     if ((painter == "auto" && (!d->painter && !d->paintwin)) ||
-        painter == "opengl")
+        painter.contains("opengl"))
     {
         LOG(VB_GENERAL, LOG_INFO, "Trying the OpenGL painter");
         d->painter = new MythOpenGLPainter();
-        QGLFormat fmt;
-        fmt.setDepth(false);
-        d->render = MythRenderOpenGL::Create(fmt);
+        d->render = MythRenderOpenGL::Create(painter);
         MythRenderOpenGL *gl = dynamic_cast<MythRenderOpenGL*>(d->render);
         d->paintwin = new MythPainterWindowGL(this, d, gl);
         QGLWidget *qgl = dynamic_cast<QGLWidget *>(d->paintwin);
@@ -1108,6 +1152,11 @@ void MythMainWindow::InitKeys()
     RegisterKey("Global", ACTION_7, QT_TRANSLATE_NOOP("MythControls","7"), "7");
     RegisterKey("Global", ACTION_8, QT_TRANSLATE_NOOP("MythControls","8"), "8");
     RegisterKey("Global", ACTION_9, QT_TRANSLATE_NOOP("MythControls","9"), "9");
+
+    RegisterKey("Global", ACTION_TVPOWERON,  QT_TRANSLATE_NOOP("MythControls",
+        "Turn the display on"),   "");
+    RegisterKey("Global", ACTION_TVPOWEROFF, QT_TRANSLATE_NOOP("MythControls",
+        "Turn the display off"),  "");
 
     RegisterKey("Global", "SYSEVENT01", QT_TRANSLATE_NOOP("MythControls",
         "Trigger System Key Event #1"), "");
@@ -1789,6 +1838,11 @@ bool MythMainWindow::DestinationExists(const QString& destination) const
     return (d->destinationMap.count(destination) > 0) ? true : false;
 }
 
+QStringList MythMainWindow::EnumerateDestinations(void) const
+{
+    return d->destinationMap.keys();
+}
+
 void MythMainWindow::RegisterMediaPlugin(const QString &name,
                                          const QString &desc,
                                          MediaPlayCallback fn)
@@ -1813,7 +1867,8 @@ bool MythMainWindow::HandleMedia(const QString &handler, const QString &mrl,
                                  const QString &subtitle,
                                  const QString &director, int season,
                                  int episode, const QString &inetref,
-                                 int lenMins, const QString &year)
+                                 int lenMins, const QString &year,
+                                 const QString &id, bool useBookmarks)
 {
     QString lhandler(handler);
     if (lhandler.isEmpty())
@@ -1823,12 +1878,23 @@ bool MythMainWindow::HandleMedia(const QString &handler, const QString &mrl,
     if (d->mediaPluginMap.count(lhandler))
     {
         d->mediaPluginMap[lhandler].playFn(mrl, plot, title, subtitle,
-                                          director, season, episode,
-                                          inetref, lenMins, year);
+                                           director, season, episode,
+                                           inetref, lenMins, year, id,
+                                           useBookmarks);
         return true;
     }
 
     return false;
+}
+
+void MythMainWindow::HandleTVPower(bool poweron)
+{
+#ifdef USING_LIBCEC
+    if (d->cecAdapter)
+        d->cecAdapter->Action((poweron) ? ACTION_TVPOWERON : ACTION_TVPOWEROFF);
+#else
+    (void) poweron;
+#endif
 }
 
 void MythMainWindow::AllowInput(bool allow)
@@ -1865,6 +1931,7 @@ bool MythMainWindow::eventFilter(QObject *, QEvent *e)
     {
         case QEvent::KeyPress:
         {
+            ResetIdleTimer();
             QKeyEvent *ke = dynamic_cast<QKeyEvent*>(e);
 
             // Work around weird GCC run-time bug. Only manifest on Mac OS X
@@ -1900,6 +1967,7 @@ bool MythMainWindow::eventFilter(QObject *, QEvent *e)
         }
         case QEvent::MouseButtonPress:
         {
+            ResetIdleTimer();
             ShowMouseCursor(true);
             if (!d->gesture.recording())
             {
@@ -1915,6 +1983,7 @@ bool MythMainWindow::eventFilter(QObject *, QEvent *e)
         }
         case QEvent::MouseButtonRelease:
         {
+            ResetIdleTimer();
             ShowMouseCursor(true);
             if (d->gestureTimer->isActive())
                 d->gestureTimer->stop();
@@ -1996,6 +2065,7 @@ bool MythMainWindow::eventFilter(QObject *, QEvent *e)
         }
         case QEvent::MouseMove:
         {
+            ResetIdleTimer();
             ShowMouseCursor(true);
             if (d->gesture.recording())
             {
@@ -2010,6 +2080,7 @@ bool MythMainWindow::eventFilter(QObject *, QEvent *e)
         }
         case QEvent::Wheel:
         {
+            ResetIdleTimer();
             ShowMouseCursor(true);
             QWheelEvent* qmw = dynamic_cast<QWheelEvent*>(e);
             int delta = qmw->delta();
@@ -2247,6 +2318,19 @@ void MythMainWindow::customEvent(QEvent *ce)
         {
             if (me->ExtraDataCount() == 1)
                 HandleMedia("Internal", me->ExtraData(0));
+            else if (me->ExtraDataCount() >= 11)
+            {
+                bool usebookmark = true;
+                if (me->ExtraDataCount() >= 12)
+                    usebookmark = me->ExtraData(11).toInt();
+                HandleMedia("Internal", me->ExtraData(0),
+                    me->ExtraData(1), me->ExtraData(2),
+                    me->ExtraData(3), me->ExtraData(4),
+                    me->ExtraData(5).toInt(), me->ExtraData(6).toInt(),
+                    me->ExtraData(7), me->ExtraData(8).toInt(),
+                    me->ExtraData(9), me->ExtraData(10),
+                    usebookmark);
+            }
             else
                 LOG(VB_GENERAL, LOG_ERR, "Failed to handle media");
         }
@@ -2265,6 +2349,23 @@ void MythMainWindow::customEvent(QEvent *ce)
                     filename = me->ExtraData(2);
             }
             ScreenShot(width, height, filename);
+        }
+        else if (message == ACTION_GETSTATUS)
+        {
+            QVariantMap state;
+            state.insert("state", "idle");
+            state.insert("menutheme",
+                 GetMythDB()->GetSetting("menutheme", "defaultmenu"));
+            state.insert("currentlocation", GetMythUI()->GetCurrentLocation());
+            MythUIStateTracker::SetState(state);
+        }
+        else if (message.startsWith("PLAYBACK_START"))
+        {
+            PauseIdleTimer(true);
+        }
+        else if (message.startsWith("PLAYBACK_END"))
+        {
+            PauseIdleTimer(false);
         }
     }
     else if ((MythEvent::Type)(ce->type()) == MythEvent::MythUserMessage)
@@ -2390,6 +2491,11 @@ void MythMainWindow::SetUIScreenRect(QRect &rect)
     d->uiScreenRect = rect;
 }
 
+int MythMainWindow::GetDrawInterval() const
+{
+    return d->drawInterval;
+}
+
 void MythMainWindow::StartLIRC(void)
 {
 #ifdef USE_LIRC
@@ -2459,5 +2565,83 @@ void MythMainWindow::HideMouseTimeout(void)
 {
     ShowMouseCursor(false);
 }
+
+void MythMainWindow::ResetIdleTimer(void)
+{
+    // If the timer isn't active then it's been paused
+    if (!d->idleTimer->isActive())
+        return;
+
+    if (d->standby)
+        ExitStandby(false);
+
+    d->idleTimer->start();
+}
+
+void MythMainWindow::PauseIdleTimer(bool pause)
+{
+    if (pause)
+        d->idleTimer->stop();
+    else
+        d->idleTimer->start();
+
+    // ResetIdleTimer();
+}
+
+void MythMainWindow::IdleTimeout(void)
+{
+    if (!d->standby)
+    {
+        int idletimeout = gCoreContext->GetNumSetting("FrontendIdleTimeout",
+                                                       STANDBY_TIMEOUT);
+        LOG(VB_GENERAL, LOG_NOTICE, QString("Entering standby mode after "
+                                        "%1 minutes of inactivity")
+                                        .arg(idletimeout));
+
+        // HACK Prevent faked keypresses interrupting the transition to standby
+        PauseIdleTimer(true);
+        // HACK end
+
+        JumpTo("Main Menu");
+
+        // HACK
+        PauseIdleTimer(false);
+        // HACK end
+
+        EnterStandby(false);
+    }
+}
+
+void MythMainWindow::EnterStandby(bool manual)
+{
+    if (d->standby)
+        return;
+
+    // We've manually entered standby mode and we want to pause the timer
+    // to prevent it being Reset
+    if (manual)
+    {
+        PauseIdleTimer(true);
+        LOG(VB_GENERAL, LOG_NOTICE, QString("Entering standby mode"));
+    }
+
+    d->standby = true;
+    gCoreContext->AllowShutdown();
+}
+
+void MythMainWindow::ExitStandby(bool manual)
+{
+    if (manual)
+        PauseIdleTimer(false);
+
+    if (!d->standby)
+        return;
+
+    LOG(VB_GENERAL, LOG_NOTICE, "Leaving standby mode");
+
+    d->standby = false;
+    gCoreContext->BlockShutdown();
+}
+
 
 /* vim: set expandtab tabstop=4 shiftwidth=4: */

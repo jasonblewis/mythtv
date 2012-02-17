@@ -36,14 +36,80 @@ class Dvr : public DvrServices
 
     public:
 
-        DTC::ProgramList* GetExpiring         ( int              StartIndex, 
+        DTC::ProgramList* GetExpiringList     ( int              StartIndex, 
                                                 int              Count      );
 
-        DTC::ProgramList* GetRecorded         ( bool             Descending,
+        DTC::ProgramList* GetRecordedList     ( bool             Descending,
                                                 int              StartIndex,
                                                 int              Count      );
 
-        DTC::EncoderList* Encoders            ( );
+        DTC::ProgramList* GetFilteredRecordedList ( bool             Descending,
+                                                    int              StartIndex,
+                                                    int              Count,
+                                                    const QString   &TitleRegEx,
+                                                    const QString   &RecGroup,
+                                                    const QString   &StorageGroup );
+
+        DTC::Program*     GetRecorded         ( int              ChanId,
+                                                const QDateTime &StartTime  );
+
+        bool              RemoveRecorded      ( int              ChanId,
+                                                const QDateTime &StartTime  );
+
+        DTC::ProgramList* GetConflictList     ( int              StartIndex,
+                                                int              Count      );
+
+        DTC::ProgramList* GetUpcomingList     ( int              StartIndex,
+                                                int              Count,
+                                                bool             ShowAll );
+
+        DTC::EncoderList* GetEncoderList      ( );
+
+        // Recording Rules
+
+        int               AddRecordSchedule   ( int       ChanId,
+                                                QDateTime StartTime,
+                                                int       ParentId,
+                                                bool      Inactive,
+                                                uint      Season,
+                                                uint      Episode,
+                                                QString   Inetref,
+                                                int       FindId,
+                                                QString   Type,
+                                                QString   SearchType,
+                                                int       RecPriority,
+                                                uint      PreferredInput,
+                                                int       StartOffset,
+                                                int       EndOffset,
+                                                QString   DupMethod,
+                                                QString   DupIn,
+                                                uint      Filter,
+                                                QString   RecProfile,
+                                                QString   RecGroup,
+                                                QString   StorageGroup,
+                                                QString   PlayGroup,
+                                                bool      AutoExpire,
+                                                int       MaxEpisodes,
+                                                bool      MaxNewest,
+                                                bool      AutoCommflag,
+                                                bool      AutoTranscode,
+                                                bool      AutoMetaLookup,
+                                                bool      AutoUserJob1,
+                                                bool      AutoUserJob2,
+                                                bool      AutoUserJob3,
+                                                bool      AutoUserJob4,
+                                                int       Transcoder);
+
+        bool              RemoveRecordSchedule ( uint             RecordId   );
+
+        DTC::RecRuleList* GetRecordScheduleList( int              StartIndex,
+                                                 int              Count      );
+
+        DTC::RecRule*     GetRecordSchedule    ( uint             RecordId   );
+
+        bool              EnableRecordSchedule ( uint             RecordId   );
+
+        bool              DisableRecordSchedule( uint             RecordId   );
 };
 
 // --------------------------------------------------------------------------
@@ -75,20 +141,44 @@ class ScriptableDvr : public QObject
 
     public slots:
 
-        QObject* GetExpiring         ( int              StartIndex, 
+        QObject* GetExpiringList      ( int              StartIndex, 
                                        int              Count      )
         {
-            return m_obj.GetExpiring( StartIndex, Count );
+            return m_obj.GetExpiringList( StartIndex, Count );
         }
 
-        QObject* GetRecorded         ( bool             Descending,
+        QObject* GetRecordedList     ( bool             Descending,
                                        int              StartIndex,
                                        int              Count      )
         {
-            return m_obj.GetRecorded( Descending, StartIndex, Count );
+            return m_obj.GetRecordedList( Descending, StartIndex, Count );
         }
 
-        QObject* Encoders            () { return m_obj.Encoders(); }
+        QObject* GetFilteredRecordedList ( bool             Descending,
+                                           int              StartIndex,
+                                           int              Count,
+                                           const QString   &TitleRegEx,
+                                           const QString   &RecGroup,
+                                           const QString   &StorageGroup)
+        {
+            return m_obj.GetFilteredRecordedList( Descending, StartIndex, Count,
+                                                  TitleRegEx, RecGroup,
+                                                  StorageGroup);
+        }
+
+        QObject* GetRecorded         ( int              ChanId,
+                                       const QDateTime &StartTime  )
+        {
+            return m_obj.GetRecorded( ChanId, StartTime );
+        }
+
+        QObject* GetConflictList    ( int              StartIndex,
+                                       int              Count      )
+        {
+            return m_obj.GetConflictList( StartIndex, Count );
+        }
+
+        QObject* GetEncoderList     () { return m_obj.GetEncoderList(); }
 
 
 };

@@ -151,7 +151,7 @@ int MythOpenGLPainter::GetTextureFromCache(MythImage *im)
 
     QImage tx = QGLWidget::convertToGLFormat(*im);
     GLuint tx_id =
-        realRender->CreateTexture(tx.size(),false, 0,
+        realRender->CreateTexture(tx.size(), false, 0,
                                   GL_UNSIGNED_BYTE, GL_RGBA, GL_RGBA8,
                                   GL_LINEAR_MIPMAP_LINEAR);
 
@@ -226,4 +226,16 @@ void MythOpenGLPainter::DeleteFormatImagePriv(MythImage *im)
         m_ImageIntMap.remove(im);
         m_ImageExpireList.remove(im);
     }
+}
+
+void MythOpenGLPainter::PushTransformation(const UIEffects &fx, QPointF center)
+{
+    if (realRender)
+        realRender->PushTransformation(fx, center);
+}
+
+void MythOpenGLPainter::PopTransformation(void)
+{
+    if (realRender)
+        realRender->PopTransformation();
 }

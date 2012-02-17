@@ -170,7 +170,7 @@ int mythfile_open(const char *pathname, int flags)
         RingBuffer *rb = NULL;
         RemoteFile *rf = NULL;
 
-        if ((fileinfo.st_size < 51200) &&
+        if ((fileinfo.st_size < 512) &&
             (fileinfo.st_mtime < (time(NULL) - 300)))
         {
             if (flags & O_WRONLY)
@@ -525,11 +525,13 @@ char *mythdir_readdir(int dirID)
     }
     else if (m_localdirs.contains(dirID))
     {
-        struct dirent *entry = readdir(m_localdirs[dirID]);
-        if (entry)
-        {
-            result = strdup(entry->d_name);
-        }
+        int sz = offsetof(struct dirent, d_name) + FILENAME_MAX + 1;
+        struct dirent *entry =
+            reinterpret_cast<struct dirent*>(calloc(1, sz));
+        struct dirent *r = NULL;
+        if ((0 == readdir_r(m_localdirs[dirID], entry, &r)) && (NULL != r))
+            result = strdup(r->d_name);
+        free(entry);
     }
     m_dirWrapperLock.unlock();
 

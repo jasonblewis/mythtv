@@ -26,6 +26,7 @@ class MUI_PUBLIC MythRect : public QRect
     bool operator== (const MythRect &other) const;
 
     void Init(void);
+    void Reset(void);
     void CalculateArea(const MythRect & parentArea);
 
     void NormRect(void);
@@ -54,6 +55,7 @@ class MUI_PUBLIC MythRect : public QRect
     void moveTop(const QString &sX);
     void moveTop(int Y) { QRect::moveTop(Y); }
 
+    QString toString(bool details = false) const;
     QRect toQRect(void) const;
 
   private:
@@ -102,6 +104,7 @@ class MUI_PUBLIC MythPoint : public QPoint
     QString getX(void) const;
     QString getY(void) const;
 
+    QString toString(bool details = false) const;
     QPoint toQPoint(void) const;
 
   private:

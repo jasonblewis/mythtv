@@ -18,6 +18,8 @@
 #include "compat.h"
 #include "util.h"
 
+#include "serviceHosts/frontendServiceHost.h"
+
 class MythFrontendStatus : public HttpServerExtension
 {
   public:
@@ -43,6 +45,15 @@ class MythFrontendStatus : public HttpServerExtension
 
         SSDPCacheEntries* cache = NULL;
         QString ipaddress = QString();
+/*      QStringList::const_iterator sit = UPnp::g_IPAddrList.begin();
+        for (; sit != UPnp::g_IPAddrList.end(); ++sit)
+        {
+            if (QHostAddress(*sit).protocol() == QAbstractSocket::IPv4Protocol)
+            {
+                ipaddress = *sit;
+                break;
+            }
+        }*/
         if (!UPnp::g_IPAddrList.isEmpty())
             ipaddress = UPnp::g_IPAddrList.at(0);
 
@@ -211,7 +222,7 @@ MediaRenderer::MediaRenderer()
     if (!m_pHttpServer)
         return;
 
-    if (!m_pHttpServer->listen(gCoreContext->MythHostAddressAny(), nPort))
+    if (!m_pHttpServer->listen(gCoreContext->MythHostAddress(), nPort))
     {
         LOG(VB_GENERAL, LOG_ERR, "MediaRenderer::HttpServer Create Error");
         delete m_pHttpServer;
@@ -234,7 +245,7 @@ MediaRenderer::MediaRenderer()
         UPnpDevice &device = g_UPnpDeviceDesc.m_rootDevice;
 
         device.m_sDeviceType   = "urn:schemas-upnp-org:device:MediaRenderer:1";
-        device.m_sFriendlyName      = "MythTv AV Renderer";
+        device.m_sFriendlyName      = "MythTV AV Renderer";
         device.m_sManufacturer      = "MythTV";
         device.m_sManufacturerURL   = "http://www.mythtv.org";
         device.m_sModelDescription  = "MythTV AV Media Renderer";
@@ -267,6 +278,9 @@ MediaRenderer::MediaRenderer()
         LOG(VB_UPNP, LOG_INFO, "MediaRenderer::Registering MythFEXML Service.");
         m_pHttpServer->RegisterExtension(
             new MythFEXML(RootDevice(), m_pHttpServer->GetSharePath()));
+
+        LOG(VB_UPNP, LOG_INFO, "MediaRenderer::Registering Status Service.");
+        m_pHttpServer->RegisterExtension(new FrontendServiceHost(m_pHttpServer->GetSharePath()));
 
 #if 0
         LOG(VB_UPNP, LOG_INFO,

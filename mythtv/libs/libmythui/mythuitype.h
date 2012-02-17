@@ -9,6 +9,7 @@
 #include <QColor>
 
 #include "xmlparsebase.h"
+#include "mythuianimation.h"
 #include "mythrect.h"
 #include "mythgesture.h"
 #include "mythmedia.h"
@@ -83,7 +84,7 @@ class MUI_PUBLIC MythUIType : public QObject, public XMLParseBase
     // Check set dirty status
     bool NeedsRedraw(void) const;
     void ResetNeedsRedraw(void);
-    void SetRedraw();
+    void SetRedraw(void);
 
     void SetChildNeedsRedraw(MythUIType *child);
 
@@ -98,6 +99,9 @@ class MUI_PUBLIC MythUIType : public QObject, public XMLParseBase
     bool MoveToTop(void);
     bool MoveChildToTop(MythUIType *child);
 
+    void ActivateAnimations(MythUIAnimation::Trigger trigger);
+    QList<MythUIAnimation*>* GetAnimations(void) { return &m_animations; }
+
     // Called each draw pulse.  Will redraw automatically if dirty afterwards
     virtual void Pulse(void);
 
@@ -111,12 +115,14 @@ class MUI_PUBLIC MythUIType : public QObject, public XMLParseBase
     virtual void SetMinSize(const MythPoint &size);
     virtual QSize GetMinSize(void) const;
     virtual void SetArea(const MythRect &rect);
-    virtual void AdjustMinArea(int delta_x, int delta_y);
+    virtual void AdjustMinArea(int delta_x, int delta_y,
+                               int delta_w, int delta_h);
     virtual void VanishSibling(void);
     virtual void SetMinAreaParent(MythRect actual_area, MythRect full_area,
-                                  const MythUIType *child);
-    virtual void SetMinArea(const QSize &size);
+                                  MythUIType *child);
+    virtual void SetMinArea(const MythRect & rect);
     virtual MythRect GetArea(void) const;
+    virtual MythRect GetFullArea(void) const;
     virtual void RecalculateArea(bool recurse = true);
     void ExpandArea(const MythRect &rect);
 
@@ -142,6 +148,10 @@ class MUI_PUBLIC MythUIType : public QObject, public XMLParseBase
     void SetHelpText(const QString &text) { m_helptext = text; }
     QString GetHelpText(void) const { return m_helptext; }
 
+    void SetXMLLocation(const QString &filename, int where)
+    { m_xmlLocation = QString("%1:%2").arg(filename).arg(where); }
+    QString GetXMLLocation(void) const { return m_xmlLocation; }
+
     bool IsDeferredLoading(bool recurse = false) const;
     void SetDeferLoad(bool defer) { m_deferload = defer; }
     virtual void LoadNow(void);
@@ -150,6 +160,13 @@ class MUI_PUBLIC MythUIType : public QObject, public XMLParseBase
 
     virtual MythPainter *GetPainter(void);
     void SetPainter(MythPainter *painter) { m_Painter = painter; }
+
+    void SetCentre(UIEffects::Centre centre);
+    void SetZoom(float zoom);
+    void SetHorizontalZoom(float zoom);
+    void SetVerticalZoom(float zoom);
+    void SetAngle(float angle);
+    void SetDependIsDefault(bool isDefault);
 
   protected:
     virtual void customEvent(QEvent *);
@@ -161,6 +178,7 @@ class MUI_PUBLIC MythUIType : public QObject, public XMLParseBase
     void Hide(void);
     void Show(void);
     void Refresh(void);
+    void UpdateDependState(bool isDefault);
 
   signals:
     void RequestUpdate();
@@ -174,6 +192,7 @@ class MUI_PUBLIC MythUIType : public QObject, public XMLParseBase
     void Disabling();
     void FinishedMoving();
     void FinishedFading();
+    void DependChanged(bool isDefault);
 
   protected:
     virtual void DrawSelf(MythPainter *p, int xoffset, int yoffset,
@@ -200,21 +219,24 @@ class MUI_PUBLIC MythUIType : public QObject, public XMLParseBase
     bool m_HasFocus;
     bool m_CanHaveFocus;
     bool m_Enabled;
+    bool m_EnableInitiator;
     bool m_Initiator;
     bool m_Vanish;
     bool m_Vanished;
+    bool m_IsDependDefault;
 
     int m_focusOrder;
 
     MythRect m_Area;
     MythRect m_MinArea;
     MythPoint m_MinSize;
-    QSize m_NormalSize;
+//    QSize m_NormalSize;
 
     QRegion m_DirtyRegion;
     bool m_NeedsRedraw;
 
-    int m_Alpha;
+    UIEffects m_Effects;
+
     int m_AlphaChangeMode; // 0 - none, 1 - once, 2 - cycle
     int m_AlphaChange;
     int m_AlphaMin;
@@ -229,7 +251,9 @@ class MUI_PUBLIC MythUIType : public QObject, public XMLParseBase
     MythUIType *m_Parent;
     MythPainter *m_Painter;
 
+    QList<MythUIAnimation*> m_animations;
     QString m_helptext;
+    QString m_xmlLocation;
 
     bool m_deferload;
 

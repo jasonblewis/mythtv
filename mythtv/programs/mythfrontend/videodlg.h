@@ -22,6 +22,7 @@ class MetadataLookup;
 class MetadataFactory;
 class VideoMetadata;
 class VideoScanner;
+class MythMenu;
 
 class QUrl;
 
@@ -63,6 +64,7 @@ class VideoDialog : public MythScreenType
 
   protected slots:
     void Init(); /// Called after the screen is created by MythScreenStack
+    void Load(); /// Called after the screen is created by MythScreenStack
 
   private slots:
     void UpdatePosition();
@@ -102,13 +104,15 @@ class VideoDialog : public MythScreenType
     void OnRemoveVideo(bool);
 
     void VideoMenu();
-    void InfoMenu();
-    void ManageMenu();
-    void PlayMenu();
+    MythMenu* CreateInfoMenu();
+    MythMenu* CreateManageMenu();
+    MythMenu* CreatePlayMenu();
     void DisplayMenu();
-    void ViewMenu();
-    void SettingsMenu();
-    void MetadataBrowseMenu();
+    MythMenu* CreateViewMenu();
+    MythMenu* CreateSettingsMenu();
+    MythMenu* CreateMetadataBrowseMenu();
+
+    void PromptToScan();
 
     void ChangeFilter();
 
@@ -131,7 +135,7 @@ class VideoDialog : public MythScreenType
     void doVideoScan();
 
   protected slots:
-    void reloadAllData(bool);
+    void scanFinished(bool);
     void reloadData();
     void refreshData();
     void UpdateItem(MythUIButtonListItem *item);
@@ -156,6 +160,7 @@ class VideoDialog : public MythScreenType
     VideoMetadata *GetMetadata(MythUIButtonListItem *item);
 
     void handleDirSelect(MythGenericTree *node);
+    void handleDynamicDirSelect(MythGenericTree *node);
     bool goBack();
     void setParentalLevel(const ParentalLevel::Level &level);
     void shiftParental(int amount);

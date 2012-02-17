@@ -335,8 +335,12 @@ void EITHelper::AddEIT(const DVBEventInformationTable *eit)
         desc_list_t list = MPEGDescriptor::Parse(
             eit->Descriptors(i), eit->DescriptorsLength(i));
 
-        const unsigned char *dish_event_name =
-            MPEGDescriptor::Find(list, DescriptorID::dish_event_name);
+        const unsigned char *dish_event_name = NULL;
+        if (EITFixUp::kFixDish & fix)
+        {
+            dish_event_name = MPEGDescriptor::Find(
+                    list, PrivateDescriptorID::dish_event_name);
+        }
 
         if (dish_event_name)
         {
@@ -345,8 +349,8 @@ void EITHelper::AddEIT(const DVBEventInformationTable *eit)
                 title = dend.Name(descCompression);
 
             const unsigned char *dish_event_description =
-                MPEGDescriptor::Find(list,
-                                     DescriptorID::dish_event_description);
+                MPEGDescriptor::Find(
+                    list, PrivateDescriptorID::dish_event_description);
             if (dish_event_description)
             {
                 DishEventDescriptionDescriptor dedd(dish_event_description);
@@ -373,8 +377,8 @@ void EITHelper::AddEIT(const DVBEventInformationTable *eit)
 
         if (EITFixUp::kFixDish & fix)
         {
-            const unsigned char *mpaa_data =
-                MPEGDescriptor::Find(list, DescriptorID::dish_event_mpaa);
+            const unsigned char *mpaa_data = MPEGDescriptor::Find(
+                list, PrivateDescriptorID::dish_event_mpaa);
             if (mpaa_data)
             {
                 DishEventMPAADescriptor mpaa(mpaa_data);
@@ -390,8 +394,8 @@ void EITHelper::AddEIT(const DVBEventInformationTable *eit)
 
             if (!stars) // Not MPAA rated, check VCHIP
             {
-                const unsigned char *vchip_data =
-                    MPEGDescriptor::Find(list, DescriptorID::dish_event_vchip);
+                const unsigned char *vchip_data = MPEGDescriptor::Find(
+                    list, PrivateDescriptorID::dish_event_vchip);
                 if (vchip_data)
                 {
                     DishEventVCHIPDescriptor vchip(vchip_data);
@@ -409,8 +413,8 @@ void EITHelper::AddEIT(const DVBEventInformationTable *eit)
                 rating_system = "advisory";
             }
 
-            const unsigned char *tags_data =
-                MPEGDescriptor::Find(list, DescriptorID::dish_event_tags);
+            const unsigned char *tags_data = MPEGDescriptor::Find(
+                list, PrivateDescriptorID::dish_event_tags);
             if (tags_data)
             {
                 DishEventTagsDescriptor tags(tags_data);
@@ -422,8 +426,8 @@ void EITHelper::AddEIT(const DVBEventInformationTable *eit)
                     seriesId = "";
             }
 
-            const unsigned char *properties_data =
-                MPEGDescriptor::Find(list, DescriptorID::dish_event_properties);
+            const unsigned char *properties_data = MPEGDescriptor::Find(
+                list, PrivateDescriptorID::dish_event_properties);
             if (properties_data)
             {
                 DishEventPropertiesDescriptor properties(properties_data);
@@ -546,8 +550,8 @@ void EITHelper::AddEIT(const PremiereContentInformationTable *cit)
 
     // Find Transmissions
     desc_list_t transmissions =
-        MPEGDescriptor::FindAll(list,
-                                DescriptorID::premiere_content_transmission);
+        MPEGDescriptor::FindAll(
+            list, PrivateDescriptorID::premiere_content_transmission);
     for(uint j=0; j< transmissions.size(); j++)
     {
         PremiereContentTransmissionDescriptor transmission(transmissions[j]);
@@ -620,7 +624,7 @@ void EITHelper::CompleteEvent(uint atsc_major, uint atsc_minor,
         return;
 
     QDateTime starttime;
-    time_t off = secs_Between_1Jan1970_6Jan1980 + gps_offset + utc_offset;
+    time_t off = GPS_EPOCH + gps_offset + utc_offset;
     time_t tmp = event.start_time + off;
     tm result;
 
@@ -651,9 +655,8 @@ void EITHelper::CompleteEvent(uint atsc_major, uint atsc_minor,
     uint atsc_key = (atsc_major << 16) | atsc_minor;
 
     QMutexLocker locker(&eitList_lock);
-    QString title = event.title, subtitle = ett;
-    title.detach();
-    subtitle.detach();
+    QString title = event.title;
+    QString subtitle = ett;
     db_events.enqueue(new DBEventEIT(chanid, title, subtitle,
                                      starttime, endtime,
                                      fixup.value(atsc_key), subtitle_type,
@@ -913,54 +916,54 @@ static void init_fixup(QMap<uint64_t,uint> &fix)
     fix[ 10012LL << 32 | 61441U << 16] = EITFixUp::kFixHDTV;
     fix[ 10013LL << 32 | 61441U << 16] = EITFixUp::kFixHDTV;
     // On transport 10004 only DMAX needs no fixing:
-    fix[    10004LL<<32 | 61441U << 16 | 50403] = // BBC World Service
-        fix[10004LL<<32 | 61441U << 16 | 53101] = // BBC Prime (engl)
-        fix[10004LL<<32 | 61441U << 16 | 53108] = // Toon Disney (engl)
-        fix[10004LL<<32 | 61441U << 16 | 53109] = // Sky News (engl)
-        fix[10004LL<<32 | 61441U << 16 | 53406] = // BBC Prime
-        fix[10004LL<<32 | 61441U << 16 | 53407] = // Boomerang (engl)
-        fix[10004LL<<32 | 61441U << 16 | 53404] = // Boomerang
-        fix[10004LL<<32 | 61441U << 16 | 53408] = // TCM Classic Movies (engl)
-        fix[10004LL<<32 | 61441U << 16 | 53409] = // Extreme Sports
-        fix[10004LL<<32 | 61441U << 16 | 53410] = // CNBC Europe (engl)
-        fix[10004LL<<32 | 61441U << 16 | 53503] = // Detski Mir
-        fix[10004LL<<32 | 61441U << 16 | 53411] = // Sat.1 Comedy
-        fix[10004LL<<32 | 61441U << 16 | 53412] = // kabel eins classics
-        fix[10004LL<<32 | 61441U << 16 | 53112] = // Extreme Sports (engl)
-        fix[10004LL<<32 | 61441U << 16 | 53513] = // Playhouse Disney (engl)
-        fix[10004LL<<32 | 61441U << 16 | 53618] = // K1010
-        fix[10004LL<<32 | 61441U << 16 | 53619] = // GemsTV
+    fix[10004LL<<32 | 61441U << 16 | 50403] = // BBC World Service
+    fix[10004LL<<32 | 61441U << 16 | 53101] = // BBC Prime (engl)
+    fix[10004LL<<32 | 61441U << 16 | 53108] = // Toon Disney (engl)
+    fix[10004LL<<32 | 61441U << 16 | 53109] = // Sky News (engl)
+    fix[10004LL<<32 | 61441U << 16 | 53406] = // BBC Prime
+    fix[10004LL<<32 | 61441U << 16 | 53407] = // Boomerang (engl)
+    fix[10004LL<<32 | 61441U << 16 | 53404] = // Boomerang
+    fix[10004LL<<32 | 61441U << 16 | 53408] = // TCM Classic Movies (engl)
+    fix[10004LL<<32 | 61441U << 16 | 53409] = // Extreme Sports
+    fix[10004LL<<32 | 61441U << 16 | 53410] = // CNBC Europe (engl)
+    fix[10004LL<<32 | 61441U << 16 | 53503] = // Detski Mir
+    fix[10004LL<<32 | 61441U << 16 | 53411] = // Sat.1 Comedy
+    fix[10004LL<<32 | 61441U << 16 | 53412] = // kabel eins classics
+    fix[10004LL<<32 | 61441U << 16 | 53112] = // Extreme Sports (engl)
+    fix[10004LL<<32 | 61441U << 16 | 53513] = // Playhouse Disney (engl)
+    fix[10004LL<<32 | 61441U << 16 | 53618] = // K1010
+    fix[10004LL<<32 | 61441U << 16 | 53619] = // GemsTV
         EITFixUp::kEFixForceISO8859_15;
     // On transport 10005 QVC and Giga Digital  needs no fixing:
-    fix[    10005LL<<32 | 61441U << 16 | 50104] = // E! Entertainment
-        fix[10005LL<<32 | 61441U << 16 | 50107] = // 13th Street (KD)
-        fix[10005LL<<32 | 61441U << 16 | 50301] = // ESPN Classic
-        fix[10005LL<<32 | 61441U << 16 | 50302] = // VH1 Classic
-        fix[10005LL<<32 | 61441U << 16 | 50303] = // Wein TV
-        fix[10005LL<<32 | 61441U << 16 | 50304] = // AXN
-        fix[10005LL<<32 | 61441U << 16 | 50305] = // Silverline
-        fix[10005LL<<32 | 61441U << 16 | 50306] = // NASN
-        fix[10005LL<<32 | 61441U << 16 | 50307] = // Disney Toon
-        fix[10005LL<<32 | 61441U << 16 | 53105] = // NASN (engl)
-        fix[10005LL<<32 | 61441U << 16 | 53115] = // VH1 Classic (engl)
-        fix[10005LL<<32 | 61441U << 16 | 53405] = // ESPN Classic (engl)
-        fix[10005LL<<32 | 61441U << 16 | 53402] = // AXN (engl)
-        fix[10005LL<<32 | 61441U << 16 | 53613] = // CNN (engl)
-        fix[10005LL<<32 | 61441U << 16 | 53516] = // Voyages Television
-        fix[10005LL<<32 | 61441U << 16 | 53611] = // Der Schmuckkanal
-        fix[10005LL<<32 | 61441U << 16 | 53104] = // Jukebox
+    fix[10005LL<<32 | 61441U << 16 | 50104] = // E! Entertainment
+    fix[10005LL<<32 | 61441U << 16 | 50107] = // 13th Street (KD)
+    fix[10005LL<<32 | 61441U << 16 | 50301] = // ESPN Classic
+    fix[10005LL<<32 | 61441U << 16 | 50302] = // VH1 Classic
+    fix[10005LL<<32 | 61441U << 16 | 50303] = // Wein TV
+    fix[10005LL<<32 | 61441U << 16 | 50304] = // AXN
+    fix[10005LL<<32 | 61441U << 16 | 50305] = // Silverline
+    fix[10005LL<<32 | 61441U << 16 | 50306] = // NASN
+    fix[10005LL<<32 | 61441U << 16 | 50307] = // Disney Toon
+    fix[10005LL<<32 | 61441U << 16 | 53105] = // NASN (engl)
+    fix[10005LL<<32 | 61441U << 16 | 53115] = // VH1 Classic (engl)
+    fix[10005LL<<32 | 61441U << 16 | 53405] = // ESPN Classic (engl)
+    fix[10005LL<<32 | 61441U << 16 | 53402] = // AXN (engl)
+    fix[10005LL<<32 | 61441U << 16 | 53613] = // CNN (engl)
+    fix[10005LL<<32 | 61441U << 16 | 53516] = // Voyages Television
+    fix[10005LL<<32 | 61441U << 16 | 53611] = // Der Schmuckkanal
+    fix[10005LL<<32 | 61441U << 16 | 53104] = // Jukebox
         EITFixUp::kEFixForceISO8859_15;
     // On transport 10007 only following channels need fixing:
-    fix[    10007LL<<32| 61441U << 16 | 53607] = // Eurosport
-        fix[10007LL<<32| 61441U << 16 | 53608] = // Das Vierte
-        fix[10007LL<<32| 61441U << 16 | 53609] = // Viva
-        fix[10007LL<<32| 61441U << 16 | 53628] = // COMEDY CENTRAL
+    fix[10007LL<<32| 61441U << 16 | 53607] = // Eurosport
+    fix[10007LL<<32| 61441U << 16 | 53608] = // Das Vierte
+    fix[10007LL<<32| 61441U << 16 | 53609] = // Viva
+    fix[10007LL<<32| 61441U << 16 | 53628] = // COMEDY CENTRAL
         EITFixUp::kEFixForceISO8859_15;
     // RTL Subtitle parsing
-    fix[    10007LL<<32| 61441U << 16 | 53601] = // RTL
-    fix[    10007LL<<32| 61441U << 16 | 53602] = // Super RTL
-    fix[    10007LL<<32| 61441U << 16 | 53604] = // VOX
-    fix[    10007LL<<32| 61441U << 16 | 53606] = // n-tv
+    fix[10007LL<<32| 61441U << 16 | 53601] = // RTL
+    fix[10007LL<<32| 61441U << 16 | 53602] = // Super RTL
+    fix[10007LL<<32| 61441U << 16 | 53604] = // VOX
+    fix[10007LL<<32| 61441U << 16 | 53606] = // n-tv
         EITFixUp::kFixRTL | EITFixUp::kFixCategory;
     // On transport 10008 only following channels need fixing:
     fix[    10008LL<<32 | 61441U << 16 | 53002] = // Tele 5
