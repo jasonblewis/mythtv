@@ -644,9 +644,13 @@ void PlaybackBox::updateGroupInfo(const QString &groupname,
             ProgramInfo *info = *it;
             if (info)
             {
-                uint64_t filesize = info->QueryFilesize();
+                uint64_t filesize = info->GetFilesize();
+                if (filesize == 0 || info->GetRecordingStatus() == rsRecording)
+                {
+                    filesize = info->QueryFilesize();
+                    info->SetFilesize(filesize);
+                }
                 groupSize += filesize;
-                info->SetFilesize(filesize);
             }
         }
 
@@ -685,8 +689,8 @@ void PlaybackBox::updateGroupInfo(const QString &groupname,
     updateIcons();
 }
 
-void PlaybackBox::UpdateUIListItem(
-    ProgramInfo *pginfo, bool force_preview_reload)
+void PlaybackBox::UpdateUIListItem(ProgramInfo *pginfo,
+                                   bool force_preview_reload)
 {
     if (!pginfo)
         return;
@@ -733,8 +737,8 @@ void PlaybackBox::SetItemIcons(MythUIButtonListItem *item, ProgramInfo* pginfo)
         item->DisplayState(disp_flag_stat[i]?"yes":"no", disp_flags[i]);
 }
 
-void PlaybackBox::UpdateUIListItem(
-    MythUIButtonListItem *item, bool is_sel, bool force_preview_reload)
+void PlaybackBox::UpdateUIListItem(MythUIButtonListItem *item,
+                                   bool is_sel, bool force_preview_reload)
 {
     if (!item)
         return;
@@ -1189,11 +1193,12 @@ void PlaybackBox::UpdateUIGroupList(const QStringList &groupPreferences)
                 m_currentGroup = groupname.toLower();
             }
 
-            if (groupname.isEmpty())
-                groupname = m_groupDisplayName;
+            QString displayName = groupname;
+            if (displayName.isEmpty())
+                displayName = m_groupDisplayName;
 
-            item->SetText(groupname, "name");
-            item->SetText(groupname);
+            item->SetText(displayName, "name");
+            item->SetText(displayName);
 
             int count = m_progLists[groupname.toLower()].size();
             item->SetText(QString::number(count), "reccount");
@@ -3779,7 +3784,7 @@ void PlaybackBox::customEvent(QEvent *event)
             if (tokens.size() >= 4)
             {
                 chanid = tokens[2].toUInt();
-                recstartts = QDateTime::fromString(tokens[3]);
+                recstartts = QDateTime::fromString(tokens[3], Qt::ISODate);
             }
 
             if ((tokens.size() >= 2) && tokens[1] == "UPDATE")

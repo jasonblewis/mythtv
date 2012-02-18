@@ -824,9 +824,17 @@ void MythPlayer::SetVideoParams(int width, int height, double fps,
     if (fps > 0.0f && fps < 121.0f)
     {
         video_frame_rate = fps;
-        float temp_speed = (play_speed == 0.0f) ?
-            audio.GetStretchFactor() : play_speed;
-        frame_interval = (int)(1000000.0f / video_frame_rate / temp_speed);
+        if (ffrew_skip != 0 && ffrew_skip != 1)
+        {
+            UpdateFFRewSkip();
+            videosync->setFrameInterval(frame_interval);
+        }
+        else
+        {
+            float temp_speed = (play_speed == 0.0f) ?
+                audio.GetStretchFactor() : play_speed;
+            frame_interval = (int)(1000000.0f / video_frame_rate / temp_speed);
+        }
     }
 
     if (videoOutput)
@@ -2184,7 +2192,6 @@ void MythPlayer::SwitchToProgram(void)
         discontinuity, newtype, newid);
     if (!pginfo)
         return;
-    newtype = true; // force reloading of context and stream properties
 
     bool newIsDummy = player_ctx->tvchain->GetCardType(newid) == "DUMMY";
 
@@ -2311,7 +2318,6 @@ void MythPlayer::JumpToProgram(void)
         discontinuity, newtype, newid);
     if (!pginfo)
         return;
-    newtype = true; // force reloading of context and stream properties
 
     bool newIsDummy = player_ctx->tvchain->GetCardType(newid) == "DUMMY";
     SetPlayingInfo(*pginfo);
@@ -3051,7 +3057,12 @@ void MythPlayer::SetWatched(bool forceWatched)
 
     long long numFrames = totalFrames;
 
-    if (player_ctx->playingInfo->QueryTranscodeStatus() !=
+    // For recordings we want to ignore the post-roll and account for
+    // in-progress recordings where totalFrames doesn't represent
+    // the full length of the recording. For videos we can only rely on
+    // totalFrames as duration metadata can be wrong
+    if (player_ctx->playingInfo->IsRecording() &&
+        player_ctx->playingInfo->QueryTranscodeStatus() !=
         TRANSCODING_COMPLETE)
     {
         uint endtime;
@@ -3137,15 +3148,12 @@ uint64_t MythPlayer::GetBookmark(void)
     return bookmark;
 }
 
-void MythPlayer::ChangeSpeed(void)
+bool MythPlayer::UpdateFFRewSkip(void)
 {
-    float last_speed = play_speed;
-    play_speed   = next_play_speed;
-    normal_speed = next_normal_speed;
-
-    float temp_speed = (play_speed == 0.0) ? audio.GetStretchFactor() : play_speed;
-
     bool skip_changed;
+
+    float temp_speed = (play_speed == 0.0) ?
+        audio.GetStretchFactor() : play_speed;
     if (play_speed >= 0.0f && play_speed <= 3.0f)
     {
         skip_changed = (ffrew_skip != 1);
@@ -3172,6 +3180,17 @@ void MythPlayer::ChangeSpeed(void)
         ffrew_skip = play_speed < 0.0f ? -ffrew_skip : ffrew_skip;
         ffrew_adjust = 0;
     }
+
+    return skip_changed;
+}
+
+void MythPlayer::ChangeSpeed(void)
+{
+    float last_speed = play_speed;
+    play_speed   = next_play_speed;
+    normal_speed = next_normal_speed;
+
+    bool skip_changed = UpdateFFRewSkip();
     videosync->setFrameInterval(frame_interval);
 
     if (skip_changed && videoOutput)
@@ -4075,7 +4094,8 @@ VideoFrame* MythPlayer::GetRawVideoFrame(long long frameNumber)
             VERBOSE(VB_PLAYBACK, LOC + QString("Waited 100ms for video frame"));
     }
 
-    return videoOutput->GetLastDecodedFrame();
+    videoOutput->StartDisplayingFrame();
+    return videoOutput->GetLastShownFrame();
 }
 
 QString MythPlayer::GetEncodingType(void) const
