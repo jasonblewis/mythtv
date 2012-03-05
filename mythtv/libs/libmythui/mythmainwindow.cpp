@@ -1442,6 +1442,8 @@ void MythMainWindow::ExitToMainMenu(void)
         MythScreenType *screen = toplevel->GetTopScreen();
         if (screen && screen->objectName() != QString("mainmenu"))
         {
+            MythEvent xe("EXIT_TO_MENU");
+            gCoreContext->dispatch(xe);
             if (screen->objectName() == QString("video playback window"))
             {
                 MythEvent *me = new MythEvent("EXIT_TO_MENU");

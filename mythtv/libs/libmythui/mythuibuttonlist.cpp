@@ -238,6 +238,7 @@ MythUIGroup *MythUIButtonList::PrepareButton(int buttonIdx, int itemIdx,
         QString name = QString("buttonlist button %1").arg(m_maxVisible);
         MythUIStateType *button = new MythUIStateType(this, name);
         button->CopyFrom(m_buttontemplate);
+        button->ConnectDependants(true);
 
         if (buttonIdx < 0)
         {
@@ -1376,6 +1377,8 @@ void MythUIButtonList::SetPositionArrowStates()
     if (m_clearing)
         return;
 
+    m_needsUpdate = false;
+
     // set topitem, top position
     SanitizePosition();
     m_ButtonToItem.clear();
@@ -1604,7 +1607,6 @@ uint MythUIButtonList::GetVisibleCount()
     {
         SetPositionArrowStates();
         SetScrollBarPosition();
-        m_needsUpdate = false;
     }
 
     return m_itemsVisible;
@@ -1660,6 +1662,7 @@ void MythUIButtonList::InitButton(int itemIdx, MythUIStateType* & realButton,
         QString name("buttonlist button 0");
         MythUIStateType *button = new MythUIStateType(this, name);
         button->CopyFrom(m_buttontemplate);
+        button->ConnectDependants(true);
         m_ButtonList.append(button);
         ++m_maxVisible;
     }
@@ -2227,6 +2230,7 @@ void MythUIButtonList::Init()
             QString name = QString("buttonlist button %1").arg(i);
             MythUIStateType *button = new MythUIStateType(this, name);
             button->CopyFrom(m_buttontemplate);
+            button->ConnectDependants(true);
 
             if (col > m_columns)
             {
@@ -2653,7 +2657,6 @@ void MythUIButtonList::DrawSelf(MythPainter *, int, int, int, QRect)
     {
         SetPositionArrowStates();
         SetScrollBarPosition();
-        m_needsUpdate = false;
     }
 }
 
